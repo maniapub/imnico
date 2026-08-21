@@ -8,6 +8,54 @@ var CDN = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/';
 var $ = function (id) { return document.getElementById(id); };
 
 /* ------------------------------------------------------------------ *
+ * Custom In-Page Input Dialog
+ * ------------------------------------------------------------------ */
+
+function customPrompt(title, defaultValue) {
+  return new Promise(function (resolve) {
+    var wrap = $('promptWrap');
+    var input = $('promptIn');
+    var titleEl = $('promptTitle');
+    var btnOk = $('btnPromptOk');
+    var btnCancel = $('btnPromptCancel');
+
+    titleEl.textContent = title;
+    input.value = defaultValue || '';
+    wrap.classList.remove('hidden');
+    input.focus();
+    input.select();
+
+    function cleanup() {
+      wrap.classList.add('hidden');
+      btnOk.onclick = null;
+      btnCancel.onclick = null;
+      input.onkeydown = null;
+    }
+
+    btnOk.onclick = function () {
+      var val = input.value.trim();
+      cleanup();
+      resolve(val || null);
+    };
+
+    btnCancel.onclick = function () {
+      cleanup();
+      resolve(null);
+    };
+
+    input.onkeydown = function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        btnOk.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        btnCancel.click();
+      }
+    };
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Languages, keyed by extension
  * ------------------------------------------------------------------ */
 
@@ -59,7 +107,7 @@ function langOf(path) {
 function isImage(path) { return IMAGE_EXT.indexOf(extOf(path)) >= 0; }
 
 /* ------------------------------------------------------------------ *
- * Snippets and keywords - this is what Tab offers you
+ * Snippets and keywords
  * ------------------------------------------------------------------ */
 
 var SNIP = {
@@ -300,7 +348,7 @@ function applySettings() {
 }
 
 /* ------------------------------------------------------------------ *
- * Asset loading (CodeMirror, from CDN, lazily)
+ * Asset loading (CodeMirror)
  * ------------------------------------------------------------------ */
 
 var anchor = document.querySelector('link[href="./styles.css"]');
@@ -830,9 +878,11 @@ document.addEventListener('scroll', hideCtx, true);
 
 async function newEntry(dir, kind) {
   if (!root) return status('Open a folder first');
-  var name = prompt(kind === 'dir' ? 'New folder name' : 'New file name', kind === 'dir' ? '' : 'untitled.txt');
+  var title = kind === 'dir' ? 'New Folder Name' : 'New File Name';
+  var defaultVal = kind === 'dir' ? '' : 'untitled.txt';
+  var name = await customPrompt(title, defaultVal);
   if (!name) return;
-  var path = norm(dir + '/' + name);
+  var path = norm((dir ? dir + '/' : '') + name);
   try {
     if (kind === 'dir') await getDir(path, true);
     else await writeText(path, '');
@@ -844,7 +894,7 @@ async function newEntry(dir, kind) {
   } catch (e) { status('Could not create: ' + e.message); }
 }
 async function renameEntry(k) {
-  var name = prompt('Rename to', k.name);
+  var name = await customPrompt('Rename To', k.name);
   if (!name || name === k.name) return;
   var dst = norm(dirname(k.path) + '/' + name);
   try {
@@ -1051,7 +1101,7 @@ function status(msg) {
 }
 
 /* ------------------------------------------------------------------ *
- * Console - real commands, operating on the real folder
+ * Console
  * ------------------------------------------------------------------ */
 
 var cwd = '';
@@ -1262,7 +1312,6 @@ function tokenize(line) {
   return out;
 }
 
-/* the handful of commands that make sense before any folder is open */
 var NEEDS_NO_FOLDER = { help: 1, '?': 1, check: 1, clear: 1, pwd: 1 };
 
 async function runCommand(line) {
@@ -1510,6 +1559,7 @@ function wire() {
   $('btnNewDir').onclick = function () { newEntry(cwd, 'dir'); };
   $('btnConClear').onclick = function () { $('conOut').innerHTML = ''; };
 
+  $('promptWrap').onclick = function (e) { if (e.target === $('promptWrap')) $('btnPromptCancel').click(); };
   $('modalWrap').onclick = function (e) { if (e.target === $('modalWrap')) closeSettings(); };
   $('paletteWrap').onclick = function (e) { if (e.target === $('paletteWrap')) closePalette(); };
 
@@ -1551,7 +1601,7 @@ function wire() {
 
   document.addEventListener('keydown', function (e) {
     var mod = e.ctrlKey || e.metaKey;
-    if (e.key === 'Escape') { closePalette(); closeSettings(); hideCtx(); return; }
+    if (e.key === 'Escape') { closePalette(); closeSettings(); hideCtx(); $('promptWrap').classList.add('hidden'); return; }
     if (!mod) return;
     if (e.key === 's') { e.preventDefault(); saveActive(); }
     else if (e.key === 'p') { e.preventDefault(); openPalette(); }
@@ -1584,7 +1634,6 @@ function browserInfo() {
   return { id: 'unknown', name: 'This browser', flags: null };
 }
 
-// Added explicit check utility for targeted browser configuration guidance
 async function checkSpecificBrowserConfig() {
   var isBrave = false;
   try {
@@ -1729,7 +1778,6 @@ async function main() {
   setupGrips();
   conPrompt();
 
-  // Run the specific browser configuration check
   await checkSpecificBrowserConfig();
 
   var report = renderChecks($('checks'), false);
