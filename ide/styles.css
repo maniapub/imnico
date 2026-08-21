@@ -369,7 +369,7 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
 
 /* ---------- status ---------- */
 
-.status { display: flex; align-items: center; gap: 1em; padding: .2em .7em; background: var(--panel); border-top: 1px solid var(--line); font-size: .82em; color: var(--dim); flex: 0 0 auto; }
+.status { display: flex; align-items: center; gap: 1em; padding: .3em .7em; background: var(--panel-2); border-top: 2px solid var(--line); font-size: .82em; color: var(--dim); flex: 0 0 auto; }
 .st-msg { color: var(--accent); }
 
 /* ---------- context menu & overlays ---------- */
