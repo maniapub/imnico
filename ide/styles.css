@@ -367,16 +367,31 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
 }
 .keys dd { margin: 0; color: var(--dim); align-self: center; }
 .checks { margin-top: 1.6em; text-align: left; }
-.check { display: flex; gap: .7em; padding: .6em 0; border-top: 1px solid var(--line-soft); align-items: baseline; }
+
+/* Fixed check spacing layout styles */
+.check { 
+  display: flex; 
+  gap: .8em; 
+  padding: .8em 0; 
+  border-top: 1px solid var(--line-soft); 
+  align-items: flex-start; 
+}
 .check .mark { flex: 0 0 auto; width: 1.1em; }
 .check.ok .mark { color: var(--t-str); }
 .check.bad .mark { color: var(--danger); }
-.check .body { flex: 1 1 auto; line-height: 1.65; min-width: 0; }
+.check .body { 
+  display: flex;
+  flex-direction: column;
+  gap: .5em;
+  flex: 1 1 auto; 
+  line-height: 1.65; 
+  min-width: 0; 
+}
 .check .what { color: var(--text); }
 .check.bad .what { color: var(--danger); }
 .check .why { color: var(--dim); font-size: .93em; }
-.flagline { display: flex; gap: .5em; align-items: center; margin-top: .45em; flex-wrap: wrap; }
-.flagline code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: .15em .5em; color: var(--accent); user-select: all; word-break: break-all; }
+.flagline { display: flex; gap: .6em; align-items: center; margin-top: .2em; flex-wrap: wrap; }
+.flagline code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: .2em .6em; color: var(--accent); user-select: all; word-break: break-all; }
 
 /* ---------- console ---------- */
 
