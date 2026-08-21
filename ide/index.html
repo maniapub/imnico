@@ -24,6 +24,7 @@
     <div id="crumb" class="crumb">No folder open</div>
     <div class="spacer"></div>
     <button id="btnFind" class="btn" title="Find file (Ctrl+P)">Find file</button>
+    <button id="btnAi" class="btn" title="Claude (Ctrl+Shift+A)">Claude</button>
     <button id="btnSettings" class="btn" title="Settings (Ctrl+,)">Settings</button>
   </header>
 
@@ -96,6 +97,38 @@
       </footer>
 
     </main>
+
+    <div id="gripC" class="grip grip-v" role="separator" aria-orientation="vertical" tabindex="0" title="Drag to resize"><span class="notch"></span></div>
+
+    <aside id="aiPanel" class="side ai-panel hidden">
+      <div class="side-head">
+        <span class="label">Claude</span>
+        <div class="side-actions">
+          <select id="aiModel" class="ai-model" title="Model">
+            <option value="claude-sonnet-5">Sonnet</option>
+            <option value="claude-opus-4-8">Opus</option>
+            <option value="claude-haiku-4-5-20251001">Haiku</option>
+          </select>
+          <button class="icon" id="btnAiKey" title="API key">key</button>
+          <button class="icon" id="btnAiClear" title="Clear conversation">new</button>
+        </div>
+      </div>
+      <div id="aiKeyRow" class="ai-key-row hidden">
+        <input id="aiKeyIn" type="password" class="ai-key-in" placeholder="sk-ant-..." spellcheck="false" autocomplete="off">
+        <button class="btn btn-accent" id="btnAiKeySave">Save</button>
+      </div>
+      <div id="aiMsgs" class="ai-msgs">
+        <div class="ai-empty">
+          Ask about the code in this folder. Claude can read files, search across the project, and propose edits for you to approve here - nothing gets written until you say so.
+          It cannot run your code; there's no terminal a web page can reach.
+        </div>
+      </div>
+      <div class="ai-input-row">
+        <textarea id="aiIn" class="ai-in" placeholder="Ask Claude..." rows="2"></textarea>
+        <button class="btn btn-accent" id="btnAiSend">Send</button>
+      </div>
+    </aside>
+
   </div>
 </div>
 
