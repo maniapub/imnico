@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="graphite">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bench</title>
+<meta name="description" content="A small code editor that works on a folder from your own computer.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23161a21'/%3E%3Cpath d='M9 20l4-8 4 8' stroke='%23e0a458' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M20 12v8' stroke='%23e0a458' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<div id="app">
+
+  <header class="bar">
+    <div class="brand"><span class="vise" aria-hidden="true"></span>bench</div>
+    <button id="btnOpen" class="btn btn-accent">Open folder</button>
+    <div id="crumb" class="crumb">No folder open</div>
+    <div class="spacer"></div>
+    <button id="btnFind" class="btn" title="Find file (Ctrl+P)">Find file</button>
+    <button id="btnSettings" class="btn" title="Settings (Ctrl+,)">Settings</button>
+  </header>
+
+  <div class="body">
+
+    <aside id="side" class="side">
+      <div class="side-head">
+        <span class="label">Files</span>
+        <div class="side-actions">
+          <button class="icon" id="btnNewFile" title="New file">+f</button>
+          <button class="icon" id="btnNewDir" title="New folder">+d</button>
+          <button class="icon" id="btnRefresh" title="Refresh">&#8635;</button>
+        </div>
+      </div>
+      <div id="tree" class="tree" tabindex="0">
+        <div class="tree-empty">
+          Nothing open yet.<br><br>
+          <button class="btn btn-accent" id="btnOpen2">Choose a folder</button>
+          <div id="lastFolder" class="last-folder hidden"></div>
+        </div>
+      </div>
+    </aside>
+
+    <div id="gripV" class="grip grip-v" role="separator" aria-orientation="vertical" tabindex="0" title="Drag to resize"><span class="notch"></span></div>
+
+    <main class="main">
+
+      <div id="tabs" class="tabs"></div>
+
+      <div class="editor-host">
+        <div id="cmHost" class="cm-host"></div>
+        <div id="viewHost" class="view-host hidden"></div>
+        <div id="welcome" class="welcome">
+          <div class="welcome-inner">
+            <h1>bench</h1>
+            <p class="lede">A small editor that opens a folder on <em>this</em> computer. Nothing is uploaded &mdash; every read and write happens locally in your browser.</p>
+            <dl class="keys">
+              <dt>Ctrl</dt><dd>+ P &mdash; find a file</dd>
+              <dt>Ctrl</dt><dd>+ S &mdash; save</dd>
+              <dt>Ctrl</dt><dd>+ B &mdash; toggle files</dd>
+              <dt>Ctrl</dt><dd>+ ` &mdash; toggle console</dd>
+              <dt>Tab</dt><dd>&mdash; complete for the current language</dd>
+            </dl>
+            <p id="compatNote" class="compat hidden"></p>
+          </div>
+        </div>
+      </div>
+
+      <div id="gripH" class="grip grip-h" role="separator" aria-orientation="horizontal" tabindex="0" title="Drag to resize"><span class="notch"></span></div>
+
+      <section id="console" class="console">
+        <div class="con-head">
+          <span class="label">Console</span>
+          <span class="con-note">file commands only &mdash; type <b>help</b></span>
+          <button class="icon" id="btnConClear" title="Clear">clear</button>
+        </div>
+        <div id="conOut" class="con-out"></div>
+        <div class="con-line">
+          <span id="conPrompt" class="prompt">$</span>
+          <input id="conIn" class="con-in" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="ls">
+        </div>
+      </section>
+
+      <footer class="status">
+        <span id="stLang" class="st">&mdash;</span>
+        <span id="stPos" class="st">Ln 1, Col 1</span>
+        <span id="stIndent" class="st">Spaces: 4</span>
+        <span class="spacer"></span>
+        <span id="stMsg" class="st st-msg"></span>
+      </footer>
+
+    </main>
+  </div>
+</div>
+
+<div id="ctx" class="ctx hidden"></div>
+
+<div id="paletteWrap" class="overlay hidden">
+  <div class="palette">
+    <input id="paletteIn" class="palette-in" placeholder="Type part of a file name" spellcheck="false" autocomplete="off">
+    <div id="paletteList" class="palette-list"></div>
+  </div>
+</div>
+
+<div id="modalWrap" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Settings</h2>
+      <button class="icon" id="btnCloseSettings" title="Close">&#10005;</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="group">
+        <div class="group-label">Appearance</div>
+        <label class="row"><span>Theme</span>
+          <select id="setTheme">
+            <option value="graphite">Graphite</option>
+            <option value="oxide">Oxide</option>
+            <option value="paper">Paper</option>
+            <option value="mono">Mono</option>
+          </select>
+        </label>
+        <label class="row"><span>Editor colours</span>
+          <select id="setCmTheme">
+            <option value="bench">Match theme</option>
+            <option value="material-darker">Material Darker</option>
+            <option value="dracula">Dracula</option>
+            <option value="monokai">Monokai</option>
+            <option value="nord">Nord</option>
+            <option value="eclipse">Eclipse (light)</option>
+            <option value="idea">Idea (light)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="group">
+        <div class="group-label">Sizes</div>
+        <label class="row"><span>Interface</span>
+          <input type="range" id="setUiSize" min="10" max="18" step="1"><output id="outUiSize"></output>
+        </label>
+        <label class="row"><span>Editor</span>
+          <input type="range" id="setEdSize" min="10" max="26" step="1"><output id="outEdSize"></output>
+        </label>
+        <label class="row"><span>Console</span>
+          <input type="range" id="setConSize" min="10" max="22" step="1"><output id="outConSize"></output>
+        </label>
+        <label class="row"><span>Row height</span>
+          <input type="range" id="setDensity" min="16" max="34" step="1"><output id="outDensity"></output>
+        </label>
+      </div>
+
+      <div class="group">
+        <div class="group-label">Editing</div>
+        <label class="row"><span>Tab width</span>
+          <select id="setTabSize"><option>2</option><option>4</option><option>8</option></select>
+        </label>
+        <label class="row"><span>Insert spaces</span><input type="checkbox" id="setSpaces"></label>
+        <label class="row"><span>Tab completes words</span><input type="checkbox" id="setTabComplete"></label>
+        <label class="row"><span>Wrap long lines</span><input type="checkbox" id="setWrap"></label>
+        <label class="row"><span>Line numbers</span><input type="checkbox" id="setNums"></label>
+        <label class="row"><span>Highlight active line</span><input type="checkbox" id="setActive"></label>
+        <label class="row"><span>Close brackets</span><input type="checkbox" id="setBrackets"></label>
+        <label class="row"><span>Save after 2s idle</span><input type="checkbox" id="setAutoSave"></label>
+      </div>
+
+      <div class="group">
+        <div class="group-label">Files</div>
+        <label class="row"><span>Show hidden files</span><input type="checkbox" id="setHidden"></label>
+        <label class="row"><span>Hide node_modules, .git, etc.</span><input type="checkbox" id="setIgnore"></label>
+      </div>
+
+      <div class="group">
+        <button class="btn" id="btnReset">Reset to defaults</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="./app.js"></script>
+</body>
+</html>
