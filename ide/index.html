@@ -12,7 +12,7 @@
   html, body { background: #101318; color: #ccd4e0; margin: 0; height: 100%; }
   .hidden { display: none !important; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=5">
+<link rel="stylesheet" href="./styles.css?v=6">
 </head>
 <body>
 
@@ -110,7 +110,11 @@
             <option value="claude-haiku-4-5-20251001">Haiku</option>
           </select>
           <button class="icon" id="btnAiKey" title="API key">key</button>
-          <button class="icon" id="btnAiClear" title="Clear conversation">new</button>
+          <div class="ai-history-wrap">
+            <button class="icon" id="btnAiHistory" title="Past chats">chats</button>
+            <div id="aiHistoryList" class="ai-history hidden"></div>
+          </div>
+          <button class="icon" id="btnAiClear" title="Start a new conversation">new</button>
         </div>
       </div>
       <div id="aiKeyRow" class="ai-key-row hidden">
@@ -233,6 +237,6 @@
   </div>
 </div>
 
-<script src="./app.js?v=5"></script>
+<script src="./app.js?v=6"></script>
 </body>
 </html>
