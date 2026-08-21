@@ -53,15 +53,15 @@
         <div id="welcome" class="welcome">
           <div class="welcome-inner">
             <h1>bench</h1>
-            <p class="lede">A small editor that opens a folder on <em>this</em> computer. Nothing is uploaded &mdash; every read and write happens locally in your browser.</p>
+            <p class="lede">A small editor that opens a folder on <em>this</em> computer. Nothing is uploaded - every read and write happens locally in your browser.</p>
             <dl class="keys">
-              <dt>Ctrl</dt><dd>+ P &mdash; find a file</dd>
-              <dt>Ctrl</dt><dd>+ S &mdash; save</dd>
-              <dt>Ctrl</dt><dd>+ B &mdash; toggle files</dd>
-              <dt>Ctrl</dt><dd>+ ` &mdash; toggle console</dd>
-              <dt>Tab</dt><dd>&mdash; complete for the current language</dd>
+              <dt>Ctrl</dt><dd>+ P - find a file</dd>
+              <dt>Ctrl</dt><dd>+ S - save</dd>
+              <dt>Ctrl</dt><dd>+ B - toggle files</dd>
+              <dt>Ctrl</dt><dd>+ ` - toggle console</dd>
+              <dt>Tab</dt><dd>- complete for the current language</dd>
             </dl>
-            <p id="compatNote" class="compat hidden"></p>
+            <div id="checks" class="checks hidden"></div>
           </div>
         </div>
       </div>
@@ -71,7 +71,7 @@
       <section id="console" class="console">
         <div class="con-head">
           <span class="label">Console</span>
-          <span class="con-note">file commands only &mdash; type <b>help</b></span>
+          <span class="con-note">file commands only - type <b>help</b></span>
           <button class="icon" id="btnConClear" title="Clear">clear</button>
         </div>
         <div id="conOut" class="con-out"></div>
@@ -82,7 +82,7 @@
       </section>
 
       <footer class="status">
-        <span id="stLang" class="st">&mdash;</span>
+        <span id="stLang" class="st">-</span>
         <span id="stPos" class="st">Ln 1, Col 1</span>
         <span id="stIndent" class="st">Spaces: 4</span>
         <span class="spacer"></span>
@@ -167,6 +167,12 @@
         <div class="group-label">Files</div>
         <label class="row"><span>Show hidden files</span><input type="checkbox" id="setHidden"></label>
         <label class="row"><span>Hide node_modules, .git, etc.</span><input type="checkbox" id="setIgnore"></label>
+      </div>
+
+      <div class="group">
+        <div class="group-label">Browser support</div>
+        <button class="btn" id="btnCheck">Check what this browser allows</button>
+        <div id="checkPanel" class="checks"></div>
       </div>
 
       <div class="group">
