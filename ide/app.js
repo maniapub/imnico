@@ -1262,6 +1262,9 @@ function tokenize(line) {
   return out;
 }
 
+/* the handful of commands that make sense before any folder is open */
+var NEEDS_NO_FOLDER = { help: 1, '?': 1, check: 1, clear: 1, pwd: 1 };
+
 async function runCommand(line) {
   line = line.trim();
   conOut((cwd ? '~/' + cwd : '~') + ' $ ' + line, 'echo');
@@ -1279,7 +1282,7 @@ async function runCommand(line) {
     }
     return;
   }
-  if (!root && name !== 'help' && name !== 'clear' && name !== '?') {
+  if (!root && !NEEDS_NO_FOLDER[name]) {
     return conOut('Open a folder first.', 'err');
   }
   try {
