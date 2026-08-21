@@ -520,3 +520,26 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
 
 .ai-input-row { display: flex; gap: .5em; padding: .6em .7em; border-top: 1px solid var(--line-soft); flex: 0 0 auto; }
 .ai-in { flex: 1 1 auto; background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: .5em .6em; color: var(--text); resize: vertical; }
+
+/* ---------- Claude chat history ---------- */
+
+.ai-history-wrap { position: relative; }
+.ai-history {
+  position: absolute; top: 130%; right: 0; z-index: 40;
+  width: 260px; max-height: 320px; overflow-y: auto;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.45);
+}
+.ai-history-empty { padding: 1em; color: var(--dim); font-size: .88em; text-align: center; }
+.ai-history-item {
+  display: flex; align-items: center; gap: .5em;
+  padding: .5em .7em; cursor: pointer;
+  border-bottom: 1px solid var(--line-soft);
+}
+.ai-history-item:hover { background: var(--panel); }
+.ai-history-item.active { background: var(--sel); }
+.ai-history-item .t { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .9em; }
+.ai-history-item.active .t { color: var(--accent); }
+.ai-history-item .when { flex: 0 0 auto; color: var(--faint); font-size: .78em; }
+.ai-history-item .del { flex: 0 0 auto; color: var(--faint); }
+.ai-history-item .del:hover { color: var(--danger); }
