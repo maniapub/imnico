@@ -543,3 +543,18 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
 .ai-history-item .when { flex: 0 0 auto; color: var(--faint); font-size: .78em; }
 .ai-history-item .del { flex: 0 0 auto; color: var(--faint); }
 .ai-history-item .del:hover { color: var(--danger); }
+
+/* ---------- Claude usage strip ---------- */
+
+.ai-usage {
+  padding: .5em .7em;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: .8em;
+  color: var(--dim);
+  line-height: 1.6;
+}
+.ai-usage .row { display: flex; justify-content: space-between; gap: .6em; }
+.ai-usage .bar { height: 4px; background: var(--panel); border-radius: 2px; overflow: hidden; margin-top: .2em; }
+.ai-usage .fill { height: 100%; background: var(--accent); }
+.ai-usage .fill.low { background: var(--danger); }
+.ai-usage .note { color: var(--faint); font-size: .92em; margin-top: .2em; }
