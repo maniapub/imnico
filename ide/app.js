@@ -216,7 +216,7 @@ var SNIP = {
 
 var KW = {
   python: 'and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield self print len range str int float bool list dict set tuple open enumerate zip sorted sum min max abs round input isinstance type super format join split strip append extend items keys values get pop replace startswith endswith',
-  javascript: 'async await break case catch class const continue default delete do else export extends false finally for from function if import in instanceof let new null of return static super switch this throw true try typeof undefined var void while yield console document window length push pop map filter reduce forEach includes indexOf slice splice split join replace trim JSON parse stringify Promise resolve reject then catch querySelector querySelectorAll addEventListener createElement appendChild classList setAttribute textContent innerHTML',
+  javascript: 'async await break case catch class const continue default delete do else export extends false finally for from function if import in instanceof let new null of return static super switch this throw true try typeof undefined var void while yield console document window length push pop map filter reduce forEach includes indexOf slice splice split join replace JSON parse stringify Promise resolve reject then catch querySelector querySelectorAll addEventListener createElement appendChild classList setAttribute textContent innerHTML',
   typescript: 'abstract any as async await boolean break case catch class const constructor continue declare default enum export extends false finally for from function if implements import in interface keyof let namespace never new null number of private protected public readonly return static string super switch this throw true try type typeof undefined unknown var void while yield',
   html: 'div span a img ul ol li p h1 h2 h3 h4 section header footer main nav article aside form input button label select option textarea table thead tbody tr td th script link meta title style class id href src alt type name value placeholder rel width height target data- aria-',
   css: 'align-items background background-color border border-radius bottom box-shadow color cursor display flex flex-direction font-family font-size font-weight gap grid grid-template-columns height inset justify-content left letter-spacing line-height margin max-width min-height opacity overflow padding position right text-align text-transform top transform transition width z-index absolute relative fixed sticky none block inline-block pointer hidden auto',
@@ -1570,11 +1570,7 @@ function wire() {
 }
 
 /* ------------------------------------------------------------------ *
- * Start
- * ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ *
- * What this browser will and will not allow
+ * Start & Browser Configuration Alert Helpers
  * ------------------------------------------------------------------ */
 
 function browserInfo() {
@@ -1588,8 +1584,20 @@ function browserInfo() {
   return { id: 'unknown', name: 'This browser', flags: null };
 }
 
-/* Each entry says what bench needs, how to tell whether it is there, and -
-   the point of the exercise - the exact flag to turn on when it is not. */
+// Added explicit check utility for targeted browser configuration guidance
+async function checkSpecificBrowserConfig() {
+  var isBrave = false;
+  try {
+    if (navigator.brave && typeof navigator.brave.isBrave === 'function') {
+      isBrave = await navigator.brave.isBrave();
+    }
+  } catch (e) {}
+
+  if (isBrave) {
+    console.warn("Brave browser detected. Ensure File System Access APIs or permissions are correctly enabled.");
+  }
+}
+
 function runChecks() {
   var b = browserInfo();
   var flagged = { brave: 1, opera: 1, chrome: 1, edge: 1 };
@@ -1720,6 +1728,9 @@ async function main() {
   wire();
   setupGrips();
   conPrompt();
+
+  // Run the specific browser configuration check
+  await checkSpecificBrowserConfig();
 
   var report = renderChecks($('checks'), false);
   var blocked = report.checks.filter(function (c) { return !c.ok; });
