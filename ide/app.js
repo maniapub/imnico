@@ -569,7 +569,7 @@ var root = null;
 var dirCache = new Map();
 var kidCache = new Map();
 
-function clearCaches() { dirCache.clear(); kidCache.clear(); fileIndex = null; }
+function clearCaches() { dirCache.clear(); kidCache.clear(); emptyCache.clear(); fileIndex = null; }
 
 async function getDir(rel, create) {
   rel = norm(rel);
@@ -764,6 +764,23 @@ function openLoose(name, text) {
 
 var expanded = new Set();
 var treeEl = null;
+var emptyCache = new Map();
+var forceShow = new Set();
+
+/* a folder counts as empty if it has no files anywhere below it, once the
+   current hidden/junk filters are applied - a folder of only empty folders
+   is still empty */
+async function isEmptyDir(path) {
+  if (emptyCache.has(path)) return emptyCache.get(path);
+  var kids = await listDir(path);
+  var empty = true;
+  for (var i = 0; i < kids.length; i++) {
+    if (kids[i].kind === 'file') { empty = false; break; }
+    if (!(await isEmptyDir(kids[i].path))) { empty = false; break; }
+  }
+  emptyCache.set(path, empty);
+  return empty;
+}
 
 async function renderTree() {
   treeEl = $('tree');
@@ -785,6 +802,7 @@ async function renderInto(box, rel, depth) {
   var kids = await listDir(rel);
   for (var i = 0; i < kids.length; i++) {
     var k = kids[i];
+    if (k.kind === 'directory' && !forceShow.has(k.path) && await isEmptyDir(k.path)) continue;
     box.appendChild(nodeRow(k, depth));
     if (k.kind === 'directory' && expanded.has(k.path)) {
       var sub = document.createElement('div');
@@ -833,8 +851,73 @@ function nodeRow(k, depth) {
     }
   };
   el.oncontextmenu = function (ev) { ev.preventDefault(); contextMenu(ev, k); };
+
+  if (!isDir) {
+    el.draggable = true;
+    el.addEventListener('dragstart', function (ev) {
+      dragSrcPath = k.path;
+      ev.dataTransfer.effectAllowed = 'move';
+      try { ev.dataTransfer.setData('text/plain', k.path); } catch (e) {}
+      el.classList.add('dragging');
+    });
+    el.addEventListener('dragend', function () {
+      el.classList.remove('dragging');
+      dragSrcPath = null;
+      clearDropHighlight();
+    });
+  } else {
+    el.addEventListener('dragover', function (ev) {
+      if (!dragSrcPath || dirname(dragSrcPath) === k.path) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.dataTransfer.dropEffect = 'move';
+      if (dropHighlightEl !== el) { clearDropHighlight(); el.classList.add('drop-target'); dropHighlightEl = el; }
+    });
+    el.addEventListener('dragleave', function () {
+      if (dropHighlightEl === el) clearDropHighlight();
+    });
+    el.addEventListener('drop', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      var src = dragSrcPath;
+      clearDropHighlight();
+      if (src) moveIntoFolder(src, k.path);
+    });
+  }
+
   return el;
 }
+
+/* dropping a file onto a folder row, or onto the empty tree background
+   to send it back to the top level */
+async function moveIntoFolder(srcPath, destDir) {
+  if (dirname(srcPath) === destDir) return;
+  var dst = norm((destDir ? destDir + '/' : '') + basename(srcPath));
+  if (await exists(dst)) { status(basename(srcPath) + ' already exists there'); return; }
+  try {
+    await movePath(srcPath, dst);
+    if (openTabs.has(srcPath)) {
+      var e = openTabs.get(srcPath);
+      openTabs.delete(srcPath);
+      e.path = dst;
+      e.lang = langOf(dst);
+      openTabs.set(dst, e);
+      if (active === srcPath) active = dst;
+    }
+    if (destDir) expanded.add(destDir);
+    await renderTree();
+    renderTabs();
+    status('Moved to ' + (destDir || '~'));
+  } catch (err) {
+    status('Move failed: ' + err.message);
+  }
+}
+var dragSrcPath = null;
+var dropHighlightEl = null;
+function clearDropHighlight() {
+  if (dropHighlightEl) { dropHighlightEl.classList.remove('drop-target'); dropHighlightEl.classList.remove('drop-target-root'); dropHighlightEl = null; }
+}
+
 function markTreeDirty() {
   if (!treeEl) return;
   Array.prototype.forEach.call(treeEl.querySelectorAll('.node.file'), function (el) {
@@ -884,7 +967,7 @@ async function newEntry(dir, kind) {
   if (!name) return;
   var path = norm((dir ? dir + '/' : '') + name);
   try {
-    if (kind === 'dir') await getDir(path, true);
+    if (kind === 'dir') { await getDir(path, true); forceShow.add(path); }
     else await writeText(path, '');
     clearCaches();
     if (dir) expanded.add(dir);
@@ -1558,6 +1641,23 @@ function wire() {
   $('btnNewFile').onclick = function () { newEntry(cwd, 'file'); };
   $('btnNewDir').onclick = function () { newEntry(cwd, 'dir'); };
   $('btnConClear').onclick = function () { $('conOut').innerHTML = ''; };
+
+  var treeBox = $('tree');
+  treeBox.addEventListener('dragover', function (ev) {
+    if (!dragSrcPath) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'move';
+    if (dropHighlightEl !== treeBox) { clearDropHighlight(); treeBox.classList.add('drop-target-root'); dropHighlightEl = treeBox; }
+  });
+  treeBox.addEventListener('dragleave', function (ev) {
+    if (ev.target === treeBox && dropHighlightEl === treeBox) clearDropHighlight();
+  });
+  treeBox.addEventListener('drop', function (ev) {
+    ev.preventDefault();
+    var src = dragSrcPath;
+    clearDropHighlight();
+    if (src) moveIntoFolder(src, '');
+  });
 
   $('promptWrap').onclick = function (e) { if (e.target === $('promptWrap')) $('btnPromptCancel').click(); };
   $('modalWrap').onclick = function (e) { if (e.target === $('modalWrap')) closeSettings(); };
