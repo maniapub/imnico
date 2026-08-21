@@ -1,4 +1,4 @@
-/* bench — a small editor for a folder on your own machine.
+/* bench - a small editor for a folder on your own machine.
    No server, no upload: everything runs in the tab via the File System Access API. */
 
 (function () {
@@ -59,7 +59,7 @@ function langOf(path) {
 function isImage(path) { return IMAGE_EXT.indexOf(extOf(path)) >= 0; }
 
 /* ------------------------------------------------------------------ *
- * Snippets and keywords — this is what Tab offers you
+ * Snippets and keywords - this is what Tab offers you
  * ------------------------------------------------------------------ */
 
 var SNIP = {
@@ -662,7 +662,7 @@ async function useFolder(h) {
   var b = document.createElement('b');
   b.textContent = h.name;
   $('crumb').appendChild(b);
-  document.title = h.name + ' — bench';
+  document.title = h.name + ' - bench';
   await renderTree();
   conPrompt();
   conOut('Opened ' + h.name, 'ok');
@@ -966,7 +966,7 @@ function closeTab(path, force) {
     if (!next.done) activate(next.value);
     else {
       $('welcome').classList.remove('hidden');
-      $('stLang').textContent = '\u2014';
+      $('stLang').textContent = '-';
       if (NOCM && fallbackTa) fallbackTa.value = '';
       else if (cm) cm.swapDoc(CodeMirror.Doc(''));
     }
@@ -1017,7 +1017,7 @@ async function showImage(path) {
     img.alt = basename(path);
     host.appendChild(img);
     var cap = document.createElement('div');
-    cap.textContent = basename(path) + ' \u2014 ' + fmtSize(f.size);
+    cap.textContent = basename(path) + ' - ' + fmtSize(f.size);
     cap.style.marginTop = '1em';
     host.appendChild(cap);
     $('welcome').classList.add('hidden');
@@ -1051,7 +1051,7 @@ function status(msg) {
 }
 
 /* ------------------------------------------------------------------ *
- * Console — real commands, operating on the real folder
+ * Console - real commands, operating on the real folder
  * ------------------------------------------------------------------ */
 
 var cwd = '';
@@ -1071,7 +1071,7 @@ function conPrompt() {
 
 var CMDS = {
   help: function () {
-    conOut('Commands run on the folder you opened. There is no shell here \u2014 a web page cannot start one.\n', 'dim');
+    conOut('Commands run on the folder you opened. There is no shell here - a web page cannot start one.\n', 'dim');
     conOut([
       'ls [-a] [dir]      list a directory',
       'cd <dir>           change directory  (cd .. and cd / work)',
@@ -1089,6 +1089,7 @@ var CMDS = {
       'wc <file>          count lines, words, characters',
       'stat <path>        size and modified time',
       'echo <text> > file write text to a file (>> appends)',
+      'check              what this browser allows, and the flags to fix it',
       'save               save the current editor tab',
       'clear              clear this output'
     ].join('\n'));
@@ -1220,10 +1221,10 @@ var CMDS = {
     if (!k) return conOut('stat: no such path', 'err');
     if (k === 'directory') {
       var kids = await listDir(p, true);
-      return conOut(p + '/ \u2014 directory, ' + kids.length + ' entries');
+      return conOut(p + '/ - directory, ' + kids.length + ' entries');
     }
     var fh = await getFileHandle(p), f = await fh.getFile();
-    conOut(p + ' \u2014 ' + fmtSize(f.size) + ', modified ' + new Date(f.lastModified).toLocaleString());
+    conOut(p + ' - ' + fmtSize(f.size) + ', modified ' + new Date(f.lastModified).toLocaleString());
   },
   echo: async function (a, rest) {
     var m = /^(.*?)\s*(>>|>)\s*(\S+)\s*$/.exec(rest);
@@ -1236,6 +1237,7 @@ var CMDS = {
     clearCaches(); await renderTree();
     conOut('wrote ' + m[3], 'ok');
   },
+  check: function () { checksToConsole(); },
   save: function () { saveActive(); },
   clear: function () { $('conOut').innerHTML = ''; }
 };
@@ -1476,6 +1478,8 @@ function bindSettings() {
   chk('setHidden', 'showHidden');
   chk('setIgnore', 'ignoreJunk');
 
+  $('btnCheck').onclick = function () { renderChecks($('checkPanel'), true); };
+
   $('btnReset').onclick = function () {
     S = Object.assign({}, DEFAULTS);
     applySettings();
@@ -1566,6 +1570,146 @@ function wire() {
  * Start
  * ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * What this browser will and will not allow
+ * ------------------------------------------------------------------ */
+
+function browserInfo() {
+  var ua = navigator.userAgent;
+  if (navigator.brave && navigator.brave.isBrave) return { id: 'brave', name: 'Brave', flags: 'brave://flags' };
+  if (/OPR\//.test(ua)) return { id: 'opera', name: 'Opera', flags: 'opera://flags' };
+  if (/Edg\//.test(ua)) return { id: 'edge', name: 'Edge', flags: 'edge://flags' };
+  if (/Firefox\//.test(ua)) return { id: 'firefox', name: 'Firefox', flags: null };
+  if (/Chrome\//.test(ua)) return { id: 'chrome', name: 'Chrome', flags: 'chrome://flags' };
+  if (/Safari\//.test(ua)) return { id: 'safari', name: 'Safari', flags: null };
+  return { id: 'unknown', name: 'This browser', flags: null };
+}
+
+/* Each entry says what bench needs, how to tell whether it is there, and -
+   the point of the exercise - the exact flag to turn on when it is not. */
+function runChecks() {
+  var b = browserInfo();
+  var flagged = { brave: 1, opera: 1, chrome: 1, edge: 1 };
+  var out = [];
+
+  function add(what, ok, why, fix, flag) {
+    out.push({ what: what, ok: ok, why: why, fix: fix, flag: flag });
+  }
+
+  add('Secure page', window.isSecureContext !== false,
+    'Every capability below is switched off by browsers on plain http.',
+    'Load this page over https, or from localhost while testing.');
+
+  var fsFlag = flagged[b.id] ? b.flags + '/#file-system-access-api' : null;
+  add('Open a folder', 'showDirectoryPicker' in window,
+    'Without this, bench cannot read your project or write files back.',
+    b.id === 'brave' ? 'Brave ships this switched off. Turn the flag on, then relaunch Brave.'
+      : b.id === 'opera' ? 'Opera ships this switched off. Turn the flag on, then relaunch Opera.'
+      : b.id === 'firefox' || b.id === 'safari' ? b.name + ' has not implemented this API at all. Chrome or Edge will work.'
+      : 'Turn the flag on, then relaunch the browser.',
+    fsFlag);
+
+  add('Write files in place',
+    !!(window.FileSystemFileHandle && window.FileSystemFileHandle.prototype && window.FileSystemFileHandle.prototype.createWritable),
+    'Saving edits back to the original file needs this. Without it, Save can only download a copy.',
+    'Use Chrome or Edge; Safari has the handles but not the writer.');
+
+  var idbOk = false;
+  try { idbOk = !!window.indexedDB; } catch (e) {}
+  add('Remember the last folder', idbOk,
+    'Bench stores the folder handle so it can offer to reopen it next visit.',
+    'A private window or blocked site data will do this. Allow storage for this site, or use a normal window.');
+
+  var lsOk = false;
+  try { localStorage.setItem('bench.probe', '1'); localStorage.removeItem('bench.probe'); lsOk = true; } catch (e) {}
+  add('Remember settings', lsOk,
+    'Themes, sizes and pane widths live in local storage.',
+    'Allow site data for this site.');
+
+  add('Copy to clipboard', !!(navigator.clipboard && navigator.clipboard.writeText),
+    'Used by Copy path in the file list. Nothing else depends on it.',
+    'Some browsers only grant this on https or after a click.');
+
+  add('Editor library', !NOCM,
+    'CodeMirror is fetched from cdnjs for highlighting and completion.',
+    'A blocker or offline machine will stop this. Editing still works in a plain text box.');
+
+  return { browser: b, checks: out };
+}
+
+function renderChecks(host, showAll) {
+  var r = runChecks();
+  host.innerHTML = '';
+  var shown = 0;
+
+  r.checks.forEach(function (c) {
+    if (c.ok && !showAll) return;
+    shown++;
+    var row = document.createElement('div');
+    row.className = 'check ' + (c.ok ? 'ok' : 'bad');
+
+    var mark = document.createElement('span');
+    mark.className = 'mark';
+    mark.textContent = c.ok ? '\u2713' : '\u2717';
+    row.appendChild(mark);
+
+    var body = document.createElement('div');
+    body.className = 'body';
+    var what = document.createElement('div');
+    what.className = 'what';
+    what.textContent = c.what;
+    body.appendChild(what);
+
+    var why = document.createElement('div');
+    why.className = 'why';
+    why.textContent = c.ok ? c.why : c.fix;
+    body.appendChild(why);
+
+    if (!c.ok && c.flag) {
+      var line = document.createElement('div');
+      line.className = 'flagline';
+      var code = document.createElement('code');
+      code.textContent = c.flag;
+      line.appendChild(code);
+      var btn = document.createElement('button');
+      btn.className = 'icon';
+      btn.textContent = 'copy';
+      btn.onclick = function () {
+        if (navigator.clipboard) navigator.clipboard.writeText(c.flag);
+        btn.textContent = 'copied';
+        setTimeout(function () { btn.textContent = 'copy'; }, 1500);
+      };
+      line.appendChild(btn);
+      var hint = document.createElement('span');
+      hint.className = 'why';
+      hint.textContent = 'paste in the address bar; links to flag pages are blocked';
+      line.appendChild(hint);
+      body.appendChild(line);
+    }
+
+    row.appendChild(body);
+    host.appendChild(row);
+  });
+
+  if (!shown) {
+    var d = document.createElement('div');
+    d.className = 'check ok';
+    d.textContent = '\u2713  ' + r.browser.name + ' allows everything bench needs.';
+    host.appendChild(d);
+  }
+  host.classList.remove('hidden');
+  return r;
+}
+
+function checksToConsole() {
+  var r = runChecks();
+  conOut(r.browser.name + ':', 'dim');
+  r.checks.forEach(function (c) {
+    conOut((c.ok ? '\u2713 ' : '\u2717 ') + c.what + (c.ok ? '' : ' - ' + c.fix), c.ok ? '' : 'err');
+    if (!c.ok && c.flag) conOut('    ' + c.flag, 'd');
+  });
+}
+
 async function main() {
   loadSettings();
   applySettings();
@@ -1574,21 +1718,17 @@ async function main() {
   setupGrips();
   conPrompt();
 
-  if (!window.showDirectoryPicker) {
-    var note = $('compatNote');
-    note.classList.remove('hidden');
-    note.textContent = 'This browser has no File System Access API, so a page cannot open a folder or write to disk here. '
-      + 'Chrome, Edge, Brave and Opera can. In this browser the Open button will load single files, read-only, and Save downloads a copy.';
-    conOut('This browser cannot open folders. Try Chrome, Edge, Brave or Opera.', 'err');
-  } else if (window.isSecureContext === false) {
-    conOut('This page is not on HTTPS, so folder access is blocked by the browser.', 'err');
+  var report = renderChecks($('checks'), false);
+  var blocked = report.checks.filter(function (c) { return !c.ok; });
+  if (blocked.length) {
+    conOut(report.browser.name + ' is blocking ' + blocked.length + ' thing'
+      + (blocked.length === 1 ? '' : 's') + ' bench needs. Type check for the details.', 'err');
+  } else {
+    $('checks').classList.add('hidden');
   }
 
   await bootEditor();
-  if (NOCM) {
-    status('Editor library did not load \u2014 using a plain text box');
-    conOut('CodeMirror could not be fetched from the CDN. Editing still works, without highlighting.', 'err');
-  }
+  if (NOCM) status('Editor library did not load; using a plain text box');
   applySettings();
   offerLastFolder();
   conOut('bench ready. Type help for what this console can do.', 'dim');
