@@ -558,3 +558,58 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
 .ai-usage .fill { height: 100%; background: var(--accent); }
 .ai-usage .fill.low { background: var(--danger); }
 .ai-usage .note { color: var(--faint); font-size: .92em; margin-top: .2em; }
+
+/* ---------- CodeMirror sizing and theme ---------- */
+/* This entire block was missing - CodeMirror was defaulting to its own
+   built-in light theme and fixed 300px height instead of filling the
+   editor pane and matching bench's colors. */
+
+.cm-host .CodeMirror {
+  height: 100%;
+  font-family: var(--mono);
+  font-size: var(--ed-size);
+  line-height: 1.55;
+}
+.CodeMirror-hints {
+  font-family: var(--mono);
+  font-size: var(--ed-size);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  z-index: 70;
+  box-shadow: 0 10px 30px rgba(0,0,0,.45);
+}
+.CodeMirror-hint { color: var(--text); padding: 2px 8px; }
+li.CodeMirror-hint-active { background: var(--accent); color: var(--accent-ink); }
+.hint-kind { color: var(--faint); float: right; margin-left: 1.4em; font-size: .85em; }
+li.CodeMirror-hint-active .hint-kind { color: var(--accent-ink); opacity: .7; }
+.CodeMirror-dialog { background: var(--panel-2); color: var(--text); border-color: var(--line); font-family: var(--mono); }
+.CodeMirror-dialog input { font-family: var(--mono); color: var(--text); }
+
+.cm-s-bench.CodeMirror { background: var(--bg); color: var(--t-var); }
+.cm-s-bench .CodeMirror-gutters { background: var(--bg); border-right: 1px solid var(--line-soft); }
+.cm-s-bench .CodeMirror-linenumber { color: var(--faint); }
+.cm-s-bench .CodeMirror-cursor { border-left: 2px solid var(--accent); }
+.cm-s-bench .CodeMirror-selected { background: var(--sel); }
+.cm-s-bench .CodeMirror-focused .CodeMirror-selected { background: var(--sel); }
+.cm-s-bench .CodeMirror-activeline-background { background: var(--line-soft); }
+.cm-s-bench .CodeMirror-matchingbracket { color: var(--accent) !important; border-bottom: 1px solid var(--accent); }
+.cm-s-bench .cm-keyword { color: var(--t-key); }
+.cm-s-bench .cm-atom { color: var(--t-num); }
+.cm-s-bench .cm-number { color: var(--t-num); }
+.cm-s-bench .cm-def { color: var(--t-fn); }
+.cm-s-bench .cm-variable { color: var(--t-var); }
+.cm-s-bench .cm-variable-2 { color: var(--t-var); }
+.cm-s-bench .cm-variable-3, .cm-s-bench .cm-type { color: var(--t-type); }
+.cm-s-bench .cm-property { color: var(--t-fn); }
+.cm-s-bench .cm-operator { color: var(--t-op); }
+.cm-s-bench .cm-comment { color: var(--t-com); font-style: italic; }
+.cm-s-bench .cm-string, .cm-s-bench .cm-string-2 { color: var(--t-str); }
+.cm-s-bench .cm-meta { color: var(--dim); }
+.cm-s-bench .cm-builtin { color: var(--t-type); }
+.cm-s-bench .cm-tag { color: var(--t-key); }
+.cm-s-bench .cm-attribute { color: var(--t-num); }
+.cm-s-bench .cm-header { color: var(--accent); font-weight: 700; }
+.cm-s-bench .cm-link { color: var(--t-fn); }
+.cm-s-bench .cm-quote { color: var(--t-str); }
+.cm-s-bench .cm-error { color: var(--danger); }
