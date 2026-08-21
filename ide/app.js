@@ -2050,9 +2050,79 @@ async function aiCall(messages) {
       messages: messages
     })
   });
+  aiReadUsageHeaders(res.headers);
   var data = await res.json().catch(function () { return {}; });
   if (!res.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + res.status));
+  if (data.usage) aiTrackTokens(data.usage);
   return data;
+}
+
+/* ---- usage: token counts are always in the response body; the
+   anthropic-ratelimit-* headers are extra, and only visible to this page
+   if Anthropic's CORS config exposes them - so this degrades to
+   token-only if the browser can't see them, rather than assuming ---- */
+
+var aiTokenTotals = { input: 0, output: 0 };
+var aiRateLimits = null;
+
+function aiTrackTokens(usage) {
+  aiTokenTotals.input += usage.input_tokens || 0;
+  aiTokenTotals.output += usage.output_tokens || 0;
+  aiRenderUsage();
+}
+
+function aiReadUsageHeaders(headers) {
+  var reqLimit = headers.get('anthropic-ratelimit-requests-limit');
+  var reqLeft = headers.get('anthropic-ratelimit-requests-remaining');
+  var tokLimit = headers.get('anthropic-ratelimit-tokens-limit');
+  var tokLeft = headers.get('anthropic-ratelimit-tokens-remaining');
+  var reset = headers.get('anthropic-ratelimit-tokens-reset');
+  if (reqLimit == null && tokLimit == null) { aiRateLimits = aiRateLimits || false; return; }
+  aiRateLimits = {
+    reqLimit: reqLimit ? +reqLimit : null, reqLeft: reqLeft ? +reqLeft : null,
+    tokLimit: tokLimit ? +tokLimit : null, tokLeft: tokLeft ? +tokLeft : null,
+    reset: reset
+  };
+}
+
+function aiRenderUsage() {
+  var box = $('aiUsage');
+  box.innerHTML = '';
+  box.classList.remove('hidden');
+
+  var tRow = document.createElement('div');
+  tRow.className = 'row';
+  tRow.innerHTML = '<span>This session</span><span>' +
+    aiTokenTotals.input.toLocaleString() + ' in / ' + aiTokenTotals.output.toLocaleString() + ' out</span>';
+  box.appendChild(tRow);
+
+  if (aiRateLimits && aiRateLimits.tokLimit) {
+    var pct = Math.max(0, Math.min(100, (aiRateLimits.tokLeft / aiRateLimits.tokLimit) * 100));
+    var row2 = document.createElement('div');
+    row2.className = 'row';
+    row2.style.marginTop = '.35em';
+    row2.innerHTML = '<span>Tokens left this window</span><span>' +
+      aiRateLimits.tokLeft.toLocaleString() + ' / ' + aiRateLimits.tokLimit.toLocaleString() + '</span>';
+    box.appendChild(row2);
+    var bar = document.createElement('div');
+    bar.className = 'bar';
+    var fill = document.createElement('div');
+    fill.className = 'fill' + (pct < 15 ? ' low' : '');
+    fill.style.width = pct + '%';
+    bar.appendChild(fill);
+    box.appendChild(bar);
+    if (aiRateLimits.reqLimit) {
+      var row3 = document.createElement('div');
+      row3.className = 'row note';
+      row3.innerHTML = '<span>Requests left</span><span>' + aiRateLimits.reqLeft + ' / ' + aiRateLimits.reqLimit + '</span>';
+      box.appendChild(row3);
+    }
+  } else if (aiRateLimits === false) {
+    var note = document.createElement('div');
+    note.className = 'note';
+    note.textContent = "Rate-limit headers aren't visible to this page - showing token counts only.";
+    box.appendChild(note);
+  }
 }
 
 async function aiSend(userText) {
