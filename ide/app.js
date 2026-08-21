@@ -355,13 +355,18 @@ var anchor = document.querySelector('link[href="./styles.css"]');
 var loaded = {};
 
 function loadCss(href, first) {
-  if (loaded['c:' + href]) return;
-  loaded['c:' + href] = true;
-  var l = document.createElement('link');
-  l.rel = 'stylesheet';
-  l.href = href;
-  if (first && anchor) document.head.insertBefore(l, anchor);
-  else document.head.appendChild(l);
+  if (loaded['c:' + href]) return loaded['c:' + href];
+  var p = new Promise(function (res) {
+    var l = document.createElement('link');
+    l.rel = 'stylesheet';
+    l.href = href;
+    l.onload = function () { res(true); };
+    l.onerror = function () { res(false); };
+    if (first && anchor) document.head.insertBefore(l, anchor);
+    else document.head.appendChild(l);
+  });
+  loaded['c:' + href] = p;
+  return p;
 }
 function loadJs(src) {
   if (loaded['j:' + src]) return loaded['j:' + src];
@@ -386,9 +391,11 @@ var NOCM = false;
 var cm = null;
 
 async function bootEditor() {
-  loadCss(CDN + 'codemirror.min.css', true);
-  loadCss(CDN + 'addon/hint/show-hint.min.css', true);
-  loadCss(CDN + 'addon/dialog/dialog.min.css', true);
+  var cssReady = Promise.all([
+    loadCss(CDN + 'codemirror.min.css', true),
+    loadCss(CDN + 'addon/hint/show-hint.min.css', true),
+    loadCss(CDN + 'addon/dialog/dialog.min.css', true)
+  ]);
   var ok = await loadJs(CDN + 'codemirror.min.js');
   if (!ok || !window.CodeMirror) { NOCM = true; return; }
   await loadSeq([
@@ -403,6 +410,7 @@ async function bootEditor() {
     CDN + 'addon/search/jump-to-line.min.js'
   ]);
 
+  await cssReady;
   cm = CodeMirror($('cmHost'), {
     value: '',
     theme: S.cmTheme,
