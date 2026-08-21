@@ -1669,9 +1669,62 @@ function closeSettings() { $('modalWrap').classList.add('hidden'); }
  * ------------------------------------------------------------------ */
 
 var AI_KEY_STORE = 'bench.claudeKey';
-var aiMessages = [];   /* {role, blocks: [...]} sent to the API, minus tool scaffolding shown separately */
+var AI_CHATS_STORE = 'bench.chats';
+var aiMessages = [];   /* {role, content: [...]} sent to the API, exactly as the Anthropic Messages API needs it */
+var aiTranscript = []; /* ordered render log for the current chat: bubbles, steps, diffs - what gets persisted and replayed */
+var aiChatId = null;
 var aiBusy = false;
 var aiDiffSeq = 0;
+
+/* ---- saved chats, in localStorage - there's no server, so this is the
+   only place conversation history can live ---- */
+
+function aiLoadChats() {
+  try { return JSON.parse(localStorage.getItem(AI_CHATS_STORE) || '[]'); } catch (e) { return []; }
+}
+function aiSaveChatsList(list) {
+  try { localStorage.setItem(AI_CHATS_STORE, JSON.stringify(list)); return true; } catch (e) { return false; }
+}
+function aiChatTitle() {
+  var first = aiTranscript.filter(function (e) { return e.type === 'bubble' && e.role === 'user'; })[0];
+  if (!first) return 'New conversation';
+  var t = first.text.trim().replace(/\s+/g, ' ');
+  return t.length > 42 ? t.slice(0, 42) + '…' : t;
+}
+/* diff entries can carry a full file's contents twice over (before/after) -
+   cap what actually gets written to localStorage so one big file can't
+   blow the quota for every saved chat */
+function aiForStorage(transcript) {
+  return transcript.map(function (e) {
+    if (e.type !== 'diff') return e;
+    var q = e.queued;
+    var cap = function (t) { return t.length > 20000 ? t.slice(0, 20000) + '\n[truncated for storage]' : t; };
+    return Object.assign({}, e, { queued: Object.assign({}, q, { before: cap(q.before), after: cap(q.after) }) });
+  });
+}
+function aiPersistCurrentChat() {
+  if (!aiTranscript.length) return;
+  var chats = aiLoadChats();
+  var id = aiChatId || ('c' + Date.now());
+  aiChatId = id;
+  var entry = { id: id, title: aiChatTitle(), updatedAt: Date.now(), model: S.aiModel, messages: aiMessages, transcript: aiForStorage(aiTranscript) };
+  var idx = chats.findIndex(function (c) { return c.id === id; });
+  if (idx >= 0) chats[idx] = entry; else chats.unshift(entry);
+  chats.sort(function (a, b) { return b.updatedAt - a.updatedAt; });
+  chats = chats.slice(0, 40);
+  if (!aiSaveChatsList(chats)) {
+    /* likely over quota - drop the oldest few and try once more */
+    chats = chats.slice(0, Math.max(1, chats.length - 5));
+    aiSaveChatsList(chats);
+  }
+}
+function aiRelTime(ts) {
+  var s = (Date.now() - ts) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
 
 function aiKey() { try { return localStorage.getItem(AI_KEY_STORE) || ''; } catch (e) { return ''; } }
 function aiSetKey(k) { try { if (k) localStorage.setItem(AI_KEY_STORE, k); else localStorage.removeItem(AI_KEY_STORE); } catch (e) {} }
@@ -1797,7 +1850,7 @@ function aiSystemPrompt() {
   return lines.join('\n');
 }
 
-function aiAddStep(text, isErr) {
+function aiAddStep(text, isErr, skipLog) {
   var box = $('aiMsgs');
   var d = document.createElement('div');
   d.className = 'ai-step' + (isErr ? ' err' : '');
@@ -1810,9 +1863,10 @@ function aiAddStep(text, isErr) {
   d.appendChild(t);
   box.appendChild(d);
   box.scrollTop = box.scrollHeight;
+  if (!skipLog) aiTranscript.push({ type: 'step', text: text, err: !!isErr });
 }
 
-function aiAddBubble(role, text) {
+function aiAddBubble(role, text, skipLog) {
   var box = $('aiMsgs');
   var wrap = document.createElement('div');
   wrap.className = 'ai-msg ' + role;
@@ -1826,11 +1880,13 @@ function aiAddBubble(role, text) {
   wrap.appendChild(bubble);
   box.appendChild(wrap);
   box.scrollTop = box.scrollHeight;
+  if (!skipLog) aiTranscript.push({ type: 'bubble', role: role, text: text });
   return bubble;
 }
 
-function aiAddDiffCard(queued) {
+function aiAddDiffCard(queued, skipLog) {
   var id = 'aidiff' + (++aiDiffSeq);
+  if (!skipLog) aiTranscript.push({ type: 'diff', logId: id, queued: queued, state: 'pending' });
   var box = $('aiMsgs');
   var card = document.createElement('div');
   card.className = 'ai-diff';
@@ -1891,6 +1947,7 @@ function aiAddDiffCard(queued) {
         renderTabs();
       }
       card.classList.add('resolved');
+      aiSetDiffState(id, 'resolved');
       status('Applied ' + basename(queued.path));
     } catch (err) {
       status('Could not write ' + basename(queued.path) + ': ' + err.message);
@@ -1899,13 +1956,81 @@ function aiAddDiffCard(queued) {
   var reject = document.createElement('button');
   reject.className = 'btn';
   reject.textContent = 'Reject';
-  reject.onclick = function () { card.classList.add('rejected'); };
+  reject.onclick = function () { card.classList.add('rejected'); aiSetDiffState(id, 'rejected'); };
   actions.appendChild(apply);
   actions.appendChild(reject);
   card.appendChild(actions);
 
   box.appendChild(card);
   box.scrollTop = box.scrollHeight;
+  return card;
+}
+
+function aiSetDiffState(logId, state) {
+  var e = aiTranscript.filter(function (x) { return x.type === 'diff' && x.logId === logId; })[0];
+  if (e) { e.state = state; aiPersistCurrentChat(); }
+}
+
+/* rebuild the panel from a saved transcript - used when switching chats */
+function aiRenderTranscript(transcript) {
+  var box = $('aiMsgs');
+  box.innerHTML = '';
+  if (!transcript.length) {
+    box.innerHTML = '<div class="ai-empty">New conversation. Claude can read files, search the project, and propose edits here.</div>';
+    return;
+  }
+  transcript.forEach(function (e) {
+    if (e.type === 'bubble') aiAddBubble(e.role, e.text, true);
+    else if (e.type === 'step') aiAddStep(e.text, e.err, true);
+    else if (e.type === 'diff') {
+      var card = aiAddDiffCard(e.queued, true);
+      if (e.state === 'resolved') card.classList.add('resolved');
+      else if (e.state === 'rejected') card.classList.add('rejected');
+    }
+  });
+}
+
+function aiLoadChat(id) {
+  var c = aiLoadChats().filter(function (x) { return x.id === id; })[0];
+  if (!c) return;
+  aiChatId = c.id;
+  aiMessages = c.messages || [];
+  aiTranscript = c.transcript || [];
+  if (c.model) { S.aiModel = c.model; $('aiModel').value = c.model; saveSettings(); }
+  aiRenderTranscript(aiTranscript);
+}
+
+function aiRenderHistoryList() {
+  var chats = aiLoadChats();
+  var box = $('aiHistoryList');
+  box.innerHTML = '';
+  if (!chats.length) { box.innerHTML = '<div class="ai-history-empty">No saved chats yet.</div>'; return; }
+  chats.forEach(function (c) {
+    var row = document.createElement('div');
+    row.className = 'ai-history-item' + (c.id === aiChatId ? ' active' : '');
+    var t = document.createElement('span');
+    t.className = 't';
+    t.textContent = c.title || 'New conversation';
+    var when = document.createElement('span');
+    when.className = 'when';
+    when.textContent = aiRelTime(c.updatedAt);
+    var del = document.createElement('button');
+    del.className = 'icon del';
+    del.textContent = '\u2715';
+    del.title = 'Delete this chat';
+    del.onclick = function (ev) {
+      ev.stopPropagation();
+      var left = aiLoadChats().filter(function (x) { return x.id !== c.id; });
+      aiSaveChatsList(left);
+      if (aiChatId === c.id) { aiChatId = null; aiMessages = []; aiTranscript = []; aiRenderTranscript([]); }
+      aiRenderHistoryList();
+    };
+    row.appendChild(t);
+    row.appendChild(when);
+    row.appendChild(del);
+    row.onclick = function () { aiLoadChat(c.id); $('aiHistoryList').classList.add('hidden'); };
+    box.appendChild(row);
+  });
 }
 
 async function aiCall(messages) {
@@ -1939,6 +2064,7 @@ async function aiSend(userText) {
   $('aiMsgs').querySelector('.ai-empty') && $('aiMsgs').querySelector('.ai-empty').remove();
   aiAddBubble('user', userText);
   aiMessages.push({ role: 'user', content: [{ type: 'text', text: userText }] });
+  aiPersistCurrentChat();
 
   var thinking = document.createElement('div');
   thinking.className = 'ai-thinking';
@@ -1987,6 +2113,7 @@ async function aiSend(userText) {
     thinking.remove();
     aiBusy = false;
     $('btnAiSend').disabled = false;
+    aiPersistCurrentChat();
   }
 }
 
@@ -2024,9 +2151,23 @@ function wire() {
     status(aiKey() ? 'API key saved' : 'API key cleared');
   };
   $('btnAiClear').onclick = function () {
+    aiChatId = null;
     aiMessages = [];
-    $('aiMsgs').innerHTML = '<div class="ai-empty">New conversation. Claude can read files, search the project, and propose edits here.</div>';
+    aiTranscript = [];
+    aiRenderTranscript([]);
   };
+  $('btnAiHistory').onclick = function (ev) {
+    ev.stopPropagation();
+    var willShow = $('aiHistoryList').classList.contains('hidden');
+    if (willShow) aiRenderHistoryList();
+    $('aiHistoryList').classList.toggle('hidden');
+  };
+  document.addEventListener('click', function (ev) {
+    if (!$('aiHistoryList').classList.contains('hidden') &&
+        !$('aiHistoryList').contains(ev.target) && ev.target !== $('btnAiHistory')) {
+      $('aiHistoryList').classList.add('hidden');
+    }
+  });
   $('btnAiSend').onclick = function () {
     var v = $('aiIn').value.trim();
     if (!v) return;
