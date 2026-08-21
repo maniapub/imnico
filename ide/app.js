@@ -297,7 +297,8 @@ var DEFAULTS = {
   tabSize: 4, insertSpaces: true, tabComplete: true,
   wrap: false, lineNumbers: true, activeLine: true, brackets: true,
   autoSave: false, showHidden: false, ignoreJunk: true,
-  sideOpen: true, conOpen: true
+  sideOpen: true, conOpen: true,
+  aiOpen: false, aiModel: 'claude-sonnet-5', claudeW: 340
 };
 var S = Object.assign({}, DEFAULTS);
 
@@ -331,6 +332,9 @@ function applySettings() {
   $('gripV').classList.toggle('hidden', !S.sideOpen);
   $('console').classList.toggle('collapsed', !S.conOpen);
   $('gripH').classList.toggle('hidden', !S.conOpen);
+  $('aiPanel').classList.toggle('hidden', !S.aiOpen);
+  $('gripC').classList.toggle('hidden', !S.aiOpen);
+  r.style.setProperty('--claude-w', S.claudeW + 'px');
   $('stIndent').textContent = (S.insertSpaces ? 'Spaces: ' : 'Tab width: ') + S.tabSize;
   if (cm) {
     cm.setOption('theme', S.cmTheme);
@@ -1524,7 +1528,7 @@ function renderPalette() {
  * ------------------------------------------------------------------ */
 
 function setupGrips() {
-  var gv = $('gripV'), gh = $('gripH');
+  var gv = $('gripV'), gh = $('gripH'), gc = $('gripC');
 
   gv.addEventListener('pointerdown', function (e) {
     e.preventDefault();
@@ -1563,6 +1567,31 @@ function setupGrips() {
     }
     gh.addEventListener('pointermove', mv);
     gh.addEventListener('pointerup', up);
+  });
+
+  gc.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    gc.setPointerCapture(e.pointerId);
+    gc.classList.add('dragging');
+    function mv(ev) {
+      S.claudeW = Math.max(240, Math.min(innerWidth - ev.clientX, innerWidth - 260));
+      document.documentElement.style.setProperty('--claude-w', S.claudeW + 'px');
+    }
+    function up() {
+      gc.classList.remove('dragging');
+      gc.removeEventListener('pointermove', mv);
+      gc.removeEventListener('pointerup', up);
+      saveSettings();
+      if (cm) cm.refresh();
+    }
+    gc.addEventListener('pointermove', mv);
+    gc.addEventListener('pointerup', up);
+  });
+  gc.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      S.claudeW = Math.max(240, Math.min(S.claudeW + (e.key === 'ArrowLeft' ? 16 : -16), innerWidth - 260));
+      applySettings();
+    }
   });
 
   gv.addEventListener('keydown', function (e) {
@@ -1636,6 +1665,346 @@ function openSettings() { $('modalWrap').classList.remove('hidden'); }
 function closeSettings() { $('modalWrap').classList.add('hidden'); }
 
 /* ------------------------------------------------------------------ *
+ * Claude panel - reads and searches the project, proposes edits
+ * ------------------------------------------------------------------ */
+
+var AI_KEY_STORE = 'bench.claudeKey';
+var aiMessages = [];   /* {role, blocks: [...]} sent to the API, minus tool scaffolding shown separately */
+var aiBusy = false;
+var aiDiffSeq = 0;
+
+function aiKey() { try { return localStorage.getItem(AI_KEY_STORE) || ''; } catch (e) { return ''; } }
+function aiSetKey(k) { try { if (k) localStorage.setItem(AI_KEY_STORE, k); else localStorage.removeItem(AI_KEY_STORE); } catch (e) {} }
+
+/* a small, capped LCS line diff - good enough for reviewing an AI-proposed
+   change without pulling in a library */
+function diffLines(oldText, newText) {
+  var A = oldText.split('\n'), B = newText.split('\n');
+  var n = A.length, m = B.length;
+  if (n * m > 3000000) {
+    return null; /* too big to diff cheaply; caller shows a plain preview instead */
+  }
+  var dp = new Array(n + 1);
+  for (var i = 0; i <= n; i++) dp[i] = new Int32Array(m + 1);
+  for (i = n - 1; i >= 0; i--) {
+    for (var j = m - 1; j >= 0; j--) {
+      dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  var out = [];
+  i = 0; var jj = 0;
+  while (i < n && jj < m) {
+    if (A[i] === B[jj]) { out.push({ t: 'ctx', l: A[i] }); i++; jj++; }
+    else if (dp[i + 1][jj] >= dp[i][jj + 1]) { out.push({ t: 'del', l: A[i] }); i++; }
+    else { out.push({ t: 'add', l: B[jj] }); jj++; }
+  }
+  while (i < n) { out.push({ t: 'del', l: A[i] }); i++; }
+  while (jj < m) { out.push({ t: 'add', l: B[jj] }); jj++; }
+  return out;
+}
+
+/* ---- tools the model can call - each mirrors a console command, against
+   the same real filesystem, so behaviour matches what "ls"/"cat"/"grep"
+   already do ---- */
+
+var AI_TOOLS = [
+  {
+    name: 'list_dir',
+    description: 'List the files and folders directly inside a directory of the open project.',
+    input_schema: { type: 'object', properties: {
+      path: { type: 'string', description: "Path relative to the project root. Empty string for the root." }
+    }, required: ['path'] }
+  },
+  {
+    name: 'read_file',
+    description: 'Read the text contents of a file in the open project.',
+    input_schema: { type: 'object', properties: {
+      path: { type: 'string', description: 'Path relative to the project root.' }
+    }, required: ['path'] }
+  },
+  {
+    name: 'search_files',
+    description: 'Search file contents across the project (or a subfolder of it) for a plain text string, like grep.',
+    input_schema: { type: 'object', properties: {
+      query: { type: 'string', description: 'Text to search for.' },
+      path: { type: 'string', description: 'Optional subfolder to limit the search to.' }
+    }, required: ['query'] }
+  },
+  {
+    name: 'propose_write',
+    description: 'Propose creating a file or replacing its full contents. This does NOT write anything - it shows the user a diff in the panel, and only applies if they approve it. Always send the complete new file content, not a partial patch.',
+    input_schema: { type: 'object', properties: {
+      path: { type: 'string', description: 'Path relative to the project root. Used for both new and existing files.' },
+      content: { type: 'string', description: 'The full new contents of the file.' },
+      summary: { type: 'string', description: 'One short sentence describing the change, shown to the user.' }
+    }, required: ['path', 'content', 'summary'] }
+  }
+];
+
+async function aiRunTool(name, input) {
+  if (!root) return { error: 'No folder is open.' };
+  try {
+    if (name === 'list_dir') {
+      var kids = await listDir(norm(input.path || ''));
+      if (!kids.length) return { result: '(empty)' };
+      return { result: kids.map(function (k) { return k.kind === 'directory' ? k.name + '/' : k.name; }).join('\n') };
+    }
+    if (name === 'read_file') {
+      var r = await readText(norm(input.path));
+      if (r.binary) return { error: basename(input.path) + ' is a binary file.' };
+      var text = r.text;
+      var truncated = false;
+      if (text.length > 30000) { text = text.slice(0, 30000); truncated = true; }
+      return { result: text + (truncated ? '\n\n[truncated - file continues]' : '') };
+    }
+    if (name === 'search_files') {
+      var base = norm(input.path || ''), hits = [], files = [];
+      await walk(base, function (p) { files.push(p); });
+      for (var i = 0; i < files.length && hits.length < 150; i++) {
+        var rr;
+        try { rr = await readText(files[i]); } catch (e) { continue; }
+        if (rr.binary || !rr.text) continue;
+        var lines = rr.text.split('\n');
+        for (var j = 0; j < lines.length && hits.length < 150; j++) {
+          if (lines[j].indexOf(input.query) >= 0) hits.push(files[i] + ':' + (j + 1) + ': ' + lines[j].trim().slice(0, 160));
+        }
+      }
+      return { result: hits.length ? hits.join('\n') : '(no matches)' };
+    }
+    if (name === 'propose_write') {
+      var path = norm(input.path);
+      var before = '';
+      var existed = (await exists(path)) === 'file';
+      if (existed) { var b = await readText(path); if (!b.binary) before = b.text; }
+      return { queued: { path: path, before: before, after: input.content, summary: input.summary, existed: existed } };
+    }
+  } catch (err) {
+    return { error: err.message };
+  }
+  return { error: 'Unknown tool: ' + name };
+}
+
+function aiSystemPrompt() {
+  var lines = [
+    'You are Claude, working as a coding assistant inside "bench", a small in-browser code editor.',
+    'You can read files, list folders, and search file contents in the project the user has open, via tools.',
+    'You have no way to run code, install packages, or use a terminal - none exists here. Do not suggest running a command as if you had run it yourself.',
+    'To create or change a file, call propose_write with the FULL new file contents. This only queues the change for the user to review and approve in the panel; it is never applied automatically. Say so plainly rather than implying the change is already made.',
+    'Keep replies concise and focused on the code.'
+  ];
+  if (root) lines.push('Project root: ' + root.name);
+  if (active) lines.push('Currently open file: ' + active);
+  return lines.join('\n');
+}
+
+function aiAddStep(text, isErr) {
+  var box = $('aiMsgs');
+  var d = document.createElement('div');
+  d.className = 'ai-step' + (isErr ? ' err' : '');
+  var dot = document.createElement('span');
+  dot.className = 'dot';
+  dot.textContent = '\u203A';
+  d.appendChild(dot);
+  var t = document.createElement('span');
+  t.textContent = text;
+  d.appendChild(t);
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+
+function aiAddBubble(role, text) {
+  var box = $('aiMsgs');
+  var wrap = document.createElement('div');
+  wrap.className = 'ai-msg ' + role;
+  var who = document.createElement('div');
+  who.className = 'who';
+  who.textContent = role === 'user' ? 'You' : 'Claude';
+  wrap.appendChild(who);
+  var bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  wrap.appendChild(bubble);
+  box.appendChild(wrap);
+  box.scrollTop = box.scrollHeight;
+  return bubble;
+}
+
+function aiAddDiffCard(queued) {
+  var id = 'aidiff' + (++aiDiffSeq);
+  var box = $('aiMsgs');
+  var card = document.createElement('div');
+  card.className = 'ai-diff';
+  card.id = id;
+
+  var head = document.createElement('div');
+  head.className = 'ai-diff-head';
+  var path = document.createElement('span');
+  path.className = 'path';
+  path.textContent = (queued.existed ? 'Edit ' : 'Create ') + queued.path;
+  head.appendChild(path);
+  card.appendChild(head);
+
+  var body = document.createElement('div');
+  body.className = 'ai-diff-body';
+  var d = diffLines(queued.before, queued.after);
+  if (!d) {
+    var note = document.createElement('div');
+    note.className = 'ai-diff-note';
+    note.textContent = 'File is too large to preview a line diff; ' + queued.after.split('\n').length + ' lines proposed.';
+    body.appendChild(note);
+  } else {
+    var frag = document.createDocumentFragment();
+    d.forEach(function (row) {
+      var line = document.createElement('div');
+      line.className = 'ai-diff-line ' + row.t;
+      line.textContent = (row.t === 'add' ? '+ ' : row.t === 'del' ? '- ' : '  ') + row.l;
+      frag.appendChild(line);
+    });
+    body.appendChild(frag);
+  }
+  card.appendChild(body);
+
+  if (queued.summary) {
+    var sum = document.createElement('div');
+    sum.className = 'ai-diff-note';
+    sum.textContent = queued.summary;
+    card.appendChild(sum);
+  }
+
+  var actions = document.createElement('div');
+  actions.className = 'ai-diff-actions';
+  var apply = document.createElement('button');
+  apply.className = 'btn btn-accent';
+  apply.textContent = 'Apply';
+  apply.onclick = async function () {
+    try {
+      await writeText(queued.path, queued.after);
+      clearCaches();
+      if (dirname(queued.path)) expanded.add(dirname(queued.path));
+      await renderTree();
+      if (openTabs.has(queued.path)) {
+        var e = openTabs.get(queued.path);
+        if (!NOCM) { e.doc.setValue(queued.after); e.gen = e.doc.changeGeneration(true); }
+        e.text = queued.after;
+        e.dirty = false;
+        if (active === queued.path) activate(queued.path);
+        renderTabs();
+      }
+      card.classList.add('resolved');
+      status('Applied ' + basename(queued.path));
+    } catch (err) {
+      status('Could not write ' + basename(queued.path) + ': ' + err.message);
+    }
+  };
+  var reject = document.createElement('button');
+  reject.className = 'btn';
+  reject.textContent = 'Reject';
+  reject.onclick = function () { card.classList.add('rejected'); };
+  actions.appendChild(apply);
+  actions.appendChild(reject);
+  card.appendChild(actions);
+
+  box.appendChild(card);
+  box.scrollTop = box.scrollHeight;
+}
+
+async function aiCall(messages) {
+  var res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': aiKey(),
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: S.aiModel,
+      max_tokens: 4096,
+      system: aiSystemPrompt(),
+      tools: AI_TOOLS,
+      messages: messages
+    })
+  });
+  var data = await res.json().catch(function () { return {}; });
+  if (!res.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + res.status));
+  return data;
+}
+
+async function aiSend(userText) {
+  if (aiBusy) return;
+  if (!aiKey()) { aiOpenKeyRow(); status('Add an API key first'); return; }
+  aiBusy = true;
+  $('btnAiSend').disabled = true;
+
+  $('aiMsgs').querySelector('.ai-empty') && $('aiMsgs').querySelector('.ai-empty').remove();
+  aiAddBubble('user', userText);
+  aiMessages.push({ role: 'user', content: [{ type: 'text', text: userText }] });
+
+  var thinking = document.createElement('div');
+  thinking.className = 'ai-thinking';
+  thinking.textContent = 'Thinking';
+  $('aiMsgs').appendChild(thinking);
+  $('aiMsgs').scrollTop = $('aiMsgs').scrollHeight;
+
+  var rounds = 0;
+  try {
+    while (rounds++ < 8) {
+      var data = await aiCall(aiMessages);
+      var blocks = data.content || [];
+      aiMessages.push({ role: 'assistant', content: blocks });
+
+      var toolUses = blocks.filter(function (b) { return b.type === 'tool_use'; });
+      var texts = blocks.filter(function (b) { return b.type === 'text'; }).map(function (b) { return b.text; }).join('\n');
+
+      if (texts.trim()) {
+        thinking.remove();
+        aiAddBubble('assistant', texts);
+      }
+
+      if (!toolUses.length) break;
+
+      var results = [];
+      for (var i = 0; i < toolUses.length; i++) {
+        var tu = toolUses[i];
+        aiAddStep(aiStepLabel(tu.name, tu.input));
+        var out = await aiRunTool(tu.name, tu.input);
+        if (out.queued) {
+          aiAddDiffCard(out.queued);
+          results.push({ type: 'tool_result', tool_use_id: tu.id, content: 'Change to ' + out.queued.path + ' queued for the user to review. Not applied yet.' });
+        } else if (out.error) {
+          results.push({ type: 'tool_result', tool_use_id: tu.id, content: 'Error: ' + out.error, is_error: true });
+        } else {
+          results.push({ type: 'tool_result', tool_use_id: tu.id, content: out.result });
+        }
+      }
+      aiMessages.push({ role: 'user', content: results });
+
+      if (data.stop_reason !== 'tool_use') break;
+    }
+  } catch (err) {
+    aiAddStep(err.message, true);
+  } finally {
+    thinking.remove();
+    aiBusy = false;
+    $('btnAiSend').disabled = false;
+  }
+}
+
+function aiStepLabel(name, input) {
+  if (name === 'list_dir') return 'Listing ' + (input.path || '~');
+  if (name === 'read_file') return 'Reading ' + input.path;
+  if (name === 'search_files') return 'Searching for "' + input.query + '"' + (input.path ? ' in ' + input.path : '');
+  if (name === 'propose_write') return 'Proposing a change to ' + input.path;
+  return name;
+}
+
+function aiOpenKeyRow() {
+  $('aiKeyRow').classList.remove('hidden');
+  $('aiKeyIn').value = aiKey();
+  $('aiKeyIn').focus();
+}
+
+/* ------------------------------------------------------------------ *
  * Wiring
  * ------------------------------------------------------------------ */
 
@@ -1645,6 +2014,30 @@ function wire() {
   $('btnSettings').onclick = openSettings;
   $('btnCloseSettings').onclick = closeSettings;
   $('btnFind').onclick = openPalette;
+  $('btnAi').onclick = function () { S.aiOpen = !S.aiOpen; applySettings(); if (S.aiOpen) $('aiIn').focus(); };
+  $('btnAiKey').onclick = function () {
+    $('aiKeyRow').classList.contains('hidden') ? aiOpenKeyRow() : $('aiKeyRow').classList.add('hidden');
+  };
+  $('btnAiKeySave').onclick = function () {
+    aiSetKey($('aiKeyIn').value.trim());
+    $('aiKeyRow').classList.add('hidden');
+    status(aiKey() ? 'API key saved' : 'API key cleared');
+  };
+  $('btnAiClear').onclick = function () {
+    aiMessages = [];
+    $('aiMsgs').innerHTML = '<div class="ai-empty">New conversation. Claude can read files, search the project, and propose edits here.</div>';
+  };
+  $('btnAiSend').onclick = function () {
+    var v = $('aiIn').value.trim();
+    if (!v) return;
+    $('aiIn').value = '';
+    aiSend(v);
+  };
+  $('aiIn').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('btnAiSend').click(); }
+  });
+  $('aiModel').value = S.aiModel;
+  $('aiModel').onchange = function () { S.aiModel = $('aiModel').value; saveSettings(); };
   $('btnRefresh').onclick = async function () { clearCaches(); await renderTree(); status('Refreshed'); };
   $('btnNewFile').onclick = function () { newEntry(cwd, 'file'); };
   $('btnNewDir').onclick = function () { newEntry(cwd, 'dir'); };
@@ -1716,6 +2109,7 @@ function wire() {
     else if (e.key === 'b') { e.preventDefault(); S.sideOpen = !S.sideOpen; applySettings(); if (cm) cm.refresh(); }
     else if (e.key === ',') { e.preventDefault(); openSettings(); }
     else if (e.key === '`') { e.preventDefault(); S.conOpen = !S.conOpen; applySettings(); if (S.conOpen) $('conIn').focus(); }
+    else if (e.key === 'A' && e.shiftKey) { e.preventDefault(); S.aiOpen = !S.aiOpen; applySettings(); if (S.aiOpen) $('aiIn').focus(); }
   });
 
   addEventListener('beforeunload', function (e) {
