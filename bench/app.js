@@ -342,6 +342,19 @@
         cm.refresh();
       }, 0);
     }
+    if (cm2) {
+      cm2.setOption("theme", S.cmTheme);
+      cm2.setOption("lineNumbers", S.lineNumbers);
+      cm2.setOption("lineWrapping", S.wrap);
+      cm2.setOption("styleActiveLine", S.activeLine);
+      cm2.setOption("autoCloseBrackets", S.brackets);
+      cm2.setOption("tabSize", S.tabSize);
+      cm2.setOption("indentUnit", S.tabSize);
+      cm2.setOption("indentWithTabs", !S.insertSpaces);
+      setTimeout(function() {
+        cm2.refresh();
+      }, 0);
+    }
     saveSettings();
   }
   var anchor = document.querySelector('link[href="./styles.css"]');
@@ -389,6 +402,73 @@
   }
   var NOCM = false;
   var cm = null;
+  var BRACKET_OPEN = { "(": ")", "[": "]", "{": "}" };
+  var BRACKET_CLOSE = { ")": "(", "]": "[", "}": "{" };
+  function checkBrackets(cmInstance) {
+    var stack = [];
+    var errors = [];
+    var n = cmInstance.lineCount();
+    for (var i = 0; i < n; i++) {
+      var tokens;
+      try {
+        tokens = cmInstance.getLineTokens(i);
+      } catch (e) {
+        tokens = null;
+      }
+      if (!tokens) continue;
+      for (var t = 0; t < tokens.length; t++) {
+        var tok = tokens[t];
+        var type = tok.type || "";
+        if (type.indexOf("comment") >= 0 || type.indexOf("string") >= 0) continue;
+        for (var ci = 0; ci < tok.string.length; ci++) {
+          var ch = tok.string[ci];
+          var col = tok.start + ci;
+          if (BRACKET_OPEN[ch]) {
+            stack.push({ ch: ch, line: i, col: col });
+          } else if (BRACKET_CLOSE[ch]) {
+            if (!stack.length) {
+              errors.push({ line: i, col: col, message: "Unexpected " + ch });
+            } else {
+              var top = stack.pop();
+              if (BRACKET_OPEN[top.ch] !== ch) {
+                errors.push({ line: i, col: col, message: "Expected " + BRACKET_OPEN[top.ch] + " but found " + ch });
+              }
+            }
+          }
+        }
+      }
+      if (errors.length >= 30) break;
+    }
+    stack.forEach(function(s) {
+      errors.push({ line: s.line, col: s.col, message: "Unclosed " + s.ch });
+    });
+    return errors.slice(0, 30);
+  }
+  var errTimer1 = null, errTimer2 = null;
+  function scheduleErrorCheck(cmInstance, isPane2) {
+    clearTimeout(isPane2 ? errTimer2 : errTimer1);
+    var t = setTimeout(function() {
+      runErrorCheck(cmInstance, isPane2);
+    }, 500);
+    if (isPane2) errTimer2 = t; else errTimer1 = t;
+  }
+  function runErrorCheck(cmInstance, isPane2) {
+    if (!cmInstance || NOCM) return;
+    cmInstance.clearGutter("bench-error-gutter");
+    var lang = isPane2 ? pane2.lang : (openTabs.get(active) && openTabs.get(active).lang);
+    if (!lang || !lang.mode) return;
+    checkBrackets(cmInstance).forEach(function(er) {
+      var dot = document.createElement("div");
+      dot.className = "error-dot";
+      dot.title = er.message;
+      dot.onclick = function() {
+        cmInstance.setCursor({ line: er.line, ch: er.col });
+        cmInstance.scrollIntoView({ line: er.line, ch: er.col }, 100);
+        cmInstance.focus();
+      };
+      cmInstance.setGutterMarker(er.line, "bench-error-gutter", dot);
+    });
+  }
   async function bootEditor() {
     var cssReady = Promise.all([ loadCss(CDN + "codemirror.min.css", true), loadCss(CDN + "addon/hint/show-hint.min.css", true), loadCss(CDN + "addon/dialog/dialog.min.css", true) ]);
     var ok = await loadJs(CDN + "codemirror.min.js");
@@ -402,6 +482,7 @@
       value: "",
       theme: S.cmTheme,
       lineNumbers: S.lineNumbers,
+      gutters: ["CodeMirror-linenumbers", "bench-error-gutter"],
       lineWrapping: S.wrap,
       styleActiveLine: S.activeLine,
       autoCloseBrackets: S.brackets,
@@ -441,11 +522,141 @@
         markTreeDirty();
       }
       if (S.autoSave && d) scheduleAutoSave();
+      scheduleErrorCheck(cm, false);
     });
     cm.on("cursorActivity", function() {
       var c = cm.getCursor();
       $("stPos").textContent = "Ln " + (c.line + 1) + ", Col " + (c.ch + 1);
     });
+  }
+  var cm2 = null;
+  var pane2 = { path: null, lang: null, dirty: false, gen: null };
+  var splitOpen = false;
+  function ensureCm2() {
+    if (cm2 || NOCM) return;
+    cm2 = CodeMirror($("cmHost2"), {
+      value: "",
+      theme: S.cmTheme,
+      lineNumbers: S.lineNumbers,
+      gutters: ["CodeMirror-linenumbers", "bench-error-gutter"],
+      lineWrapping: S.wrap,
+      styleActiveLine: S.activeLine,
+      autoCloseBrackets: S.brackets,
+      matchBrackets: true,
+      tabSize: S.tabSize,
+      indentUnit: S.tabSize,
+      indentWithTabs: !S.insertSpaces,
+      extraKeys: {
+        Tab: onTab,
+        "Shift-Tab": function(c) {
+          c.indentSelection("subtract");
+        },
+        "Ctrl-Space": function(c) {
+          showHints(c);
+        },
+        "Ctrl-/": function(c) {
+          c.toggleComment();
+        },
+        "Cmd-/": function(c) {
+          c.toggleComment();
+        },
+        "Ctrl-S": function() {
+          saveSplitPane();
+        },
+        "Cmd-S": function() {
+          saveSplitPane();
+        }
+      }
+    });
+    cm2.on("change", function() {
+      if (!pane2.path) return;
+      var d = !cm2.doc.isClean(pane2.gen);
+      if (d !== pane2.dirty) {
+        pane2.dirty = d;
+        $("split2Name").classList.toggle("dirty", d);
+      }
+      scheduleErrorCheck(cm2, true);
+    });
+  }
+  function openSplit() {
+    if (splitOpen) return;
+    splitOpen = true;
+    ensureCm2();
+    $("pane2").classList.remove("hidden");
+    $("splitGrip").classList.remove("hidden");
+    setTimeout(function() {
+      if (cm2) cm2.refresh();
+    }, 0);
+  }
+  async function openFileInPane2(path) {
+    if (isImage(path)) {
+      status("Images can't open in the split pane");
+      return;
+    }
+    openSplit();
+    if (NOCM) {
+      status("The split pane needs the editor library, which didn't load");
+      return;
+    }
+    try {
+      var r = await readText(path);
+      if (r.binary) {
+        status(basename(path) + " looks like a binary file");
+        return;
+      }
+      var lang = langOf(path);
+      await ensureMode(lang);
+      cm2.setValue(r.text);
+      cm2.setOption("mode", lang.mode || null);
+      pane2.path = path;
+      pane2.lang = lang;
+      pane2.dirty = false;
+      pane2.gen = cm2.doc.changeGeneration(true);
+      $("split2Name").textContent = basename(path);
+      $("split2Name").classList.remove("dirty");
+      $("split2Empty").classList.add("hidden");
+      $("cmHost2").classList.remove("hidden");
+      setTimeout(function() {
+        cm2.refresh();
+        runErrorCheck(cm2, true);
+      }, 0);
+    } catch (err) {
+      status("Could not open " + basename(path) + ": " + err.message);
+    }
+  }
+  function closeSplitPane() {
+    if (pane2.dirty && !confirm(basename(pane2.path) + " has unsaved changes in the split pane. Close anyway?")) return;
+    splitOpen = false;
+    pane2 = { path: null, lang: null, dirty: false, gen: null };
+    $("pane2").classList.add("hidden");
+    $("splitGrip").classList.add("hidden");
+    $("split2Empty").classList.remove("hidden");
+    $("cmHost2").classList.add("hidden");
+    $("split2Name").textContent = "No file";
+    $("split2Name").classList.remove("dirty");
+    if (cm) setTimeout(function() {
+      cm.refresh();
+    }, 0);
+  }
+  async function saveSplitPane() {
+    if (!pane2.path) return;
+    try {
+      await writeText(pane2.path, cm2.getValue());
+      pane2.dirty = false;
+      pane2.gen = cm2.doc.changeGeneration(true);
+      $("split2Name").classList.remove("dirty");
+      status("Saved " + basename(pane2.path));
+      if (openTabs.has(pane2.path)) {
+        var e = openTabs.get(pane2.path);
+        e.text = cm2.getValue();
+        if (!e.dirty && !NOCM) {
+          e.doc.setValue(cm2.getValue());
+          e.gen = e.doc.changeGeneration(true);
+        }
+      }
+    } catch (err) {
+      status("Could not save " + basename(pane2.path) + ": " + err.message);
+    }
   }
   var WORD = /[A-Za-z0-9_$-]/;
   function onTab(c) {
@@ -489,8 +700,13 @@
     while (start > 0 && WORD.test(line.charAt(start - 1))) start--;
     var word = line.slice(start, cur.ch);
     var lw = word.toLowerCase();
-    var e = openTabs.get(active);
-    var langId = e ? e.lang.id : "text";
+    var langId;
+    if (c === cm2) {
+      langId = pane2.lang ? pane2.lang.id : "text";
+    } else {
+      var e = openTabs.get(active);
+      langId = e ? e.lang.id : "text";
+    }
     var seen = {}, snips = [], keys = [], words = [];
     function add(bucket, t, kind, tpl) {
       if (!t || seen[kind + t]) return;
@@ -505,6 +721,11 @@
     }
     (SNIP[langId] || []).forEach(function(s) {
       add(snips, s[0], "snippet", s[1]);
+    });
+    customSnippets.filter(function(s) {
+      return s.lang === langId;
+    }).forEach(function(s) {
+      add(snips, s.trigger, "snippet", s.body);
     });
     (KW[langId] || "").split(" ").forEach(function(k) {
       add(keys, k, "keyword");
@@ -1023,6 +1244,12 @@
     item("New folder", function() {
       newEntry(dirFor, "dir");
     });
+    if (k.kind === "file") {
+      m.appendChild(document.createElement("hr"));
+      item("Open to the side", function() {
+        openFileInPane2(k.path);
+      });
+    }
     m.appendChild(document.createElement("hr"));
     item("Rename", function() {
       renameEntry(k);
@@ -1156,6 +1383,7 @@
       cm.focus();
       setTimeout(function() {
         cm.refresh();
+        runErrorCheck(cm, false);
       }, 0);
     }
     $("stLang").textContent = e.lang.label;
@@ -1228,6 +1456,10 @@
       e.text = text;
       renderTabs();
       status("Saved " + basename(e.path));
+      if (cm2 && pane2.path === e.path && !pane2.dirty) {
+        cm2.setValue(text);
+        pane2.gen = cm2.doc.changeGeneration(true);
+      }
     } catch (err) {
       status("Save failed: " + err.message);
     }
@@ -1620,7 +1852,25 @@
     });
   }
   function setupGrips() {
-    var gv = $("gripV"), gh = $("gripH");
+    var gv = $("gripV"), gh = $("gripH"), gs = $("splitGrip");
+    gs.addEventListener("pointerdown", function(e) {
+      e.preventDefault();
+      gs.setPointerCapture(e.pointerId);
+      gs.classList.add("dragging");
+      function mv(ev) {
+        var w = Math.max(240, Math.min(innerWidth - ev.clientX, innerWidth - 300));
+        document.documentElement.style.setProperty("--split-w", w + "px");
+      }
+      function up() {
+        gs.classList.remove("dragging");
+        gs.removeEventListener("pointermove", mv);
+        gs.removeEventListener("pointerup", up);
+        if (cm) cm.refresh();
+        if (cm2) cm2.refresh();
+      }
+      gs.addEventListener("pointermove", mv);
+      gs.addEventListener("pointerup", up);
+    });
     gv.addEventListener("pointerdown", function(e) {
       e.preventDefault();
       gv.setPointerCapture(e.pointerId);
@@ -1670,6 +1920,90 @@
         applySettings();
       }
     });
+  }
+  var SNIP_STORE = "bench.snippets";
+  var customSnippets = [];
+  function loadSnippets() {
+    try {
+      customSnippets = JSON.parse(localStorage.getItem(SNIP_STORE) || "[]");
+    } catch (e) {
+      customSnippets = [];
+    }
+  }
+  function saveSnippets() {
+    try {
+      localStorage.setItem(SNIP_STORE, JSON.stringify(customSnippets));
+    } catch (e) {}
+  }
+  function snipLangOptions() {
+    var ids = {};
+    Object.keys(LANG).forEach(function(ext) {
+      ids[LANG[ext].id] = LANG[ext].label;
+    });
+    return Object.keys(ids).sort().map(function(id) {
+      return { id: id, label: ids[id] };
+    });
+  }
+  function renderSnipList() {
+    var box = $("snipList");
+    box.innerHTML = "";
+    if (!customSnippets.length) {
+      box.innerHTML = "<div class=\"snip-empty\">No custom snippets yet.</div>";
+      return;
+    }
+    customSnippets.forEach(function(s, i) {
+      var row = document.createElement("div");
+      row.className = "snip-row";
+      var lang = document.createElement("span");
+      lang.className = "lang";
+      lang.textContent = s.lang;
+      var trig = document.createElement("span");
+      trig.className = "trig";
+      trig.textContent = s.trigger;
+      var body = document.createElement("span");
+      body.className = "body";
+      body.textContent = s.body.replace(/\n/g, " \u21b5 ");
+      var del = document.createElement("button");
+      del.className = "icon del";
+      del.textContent = "\u2715";
+      del.title = "Delete this snippet";
+      del.onclick = function() {
+        customSnippets.splice(i, 1);
+        saveSnippets();
+        renderSnipList();
+      };
+      row.appendChild(lang);
+      row.appendChild(trig);
+      row.appendChild(body);
+      row.appendChild(del);
+      box.appendChild(row);
+    });
+  }
+  function bindSnippets() {
+    var langSel = $("snipLang");
+    langSel.innerHTML = "";
+    snipLangOptions().forEach(function(o) {
+      var opt = document.createElement("option");
+      opt.value = o.id;
+      opt.textContent = o.label;
+      langSel.appendChild(opt);
+    });
+    renderSnipList();
+    $("btnSnipAdd").onclick = function() {
+      var lang = langSel.value;
+      var trigger = $("snipTrigger").value.trim();
+      var body = $("snipBody").value;
+      if (!trigger || !body.trim()) {
+        status("A snippet needs a trigger and a body");
+        return;
+      }
+      customSnippets.push({ lang: lang, trigger: trigger, body: body });
+      saveSnippets();
+      renderSnipList();
+      $("snipTrigger").value = "";
+      $("snipBody").value = "";
+      status("Snippet added");
+    };
   }
   function bindSettings() {
     function sel(id, key, cast) {
@@ -1742,6 +2076,14 @@
     $("btnSettings").onclick = openSettings;
     $("btnCloseSettings").onclick = closeSettings;
     $("btnFind").onclick = openPalette;
+    $("btnSplit").onclick = function() {
+      if (splitOpen) closeSplitPane(); else {
+        openSplit();
+        status("Right-click a file and choose \"Open to the side\"");
+      }
+    };
+    $("btnSplitClose").onclick = closeSplitPane;
+    $("btnSplitSave").onclick = saveSplitPane;
     $("btnRefresh").onclick = async function() {
       clearCaches();
       await renderTree();
@@ -2044,8 +2386,10 @@
   }
   async function main() {
     loadSettings();
+    loadSnippets();
     applySettings();
     bindSettings();
+    bindSnippets();
     wire();
     setupGrips();
     conPrompt();
