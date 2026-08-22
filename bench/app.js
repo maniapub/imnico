@@ -207,6 +207,144 @@
     files: [ "dockerfile/dockerfile" ],
     label: "Dockerfile"
   });
+  def("swift", {
+    id: "swift",
+    mode: "text/x-swift",
+    files: ["swift/swift"],
+    label: "Swift"
+  });
+  def("kt kts", {
+    id: "kotlin",
+    mode: "text/x-kotlin",
+    files: ["clike/clike"],
+    label: "Kotlin"
+  });
+  def("scala sc", {
+    id: "scala",
+    mode: "text/x-scala",
+    files: ["clike/clike"],
+    label: "Scala"
+  });
+  def("m mm", {
+    id: "objectivec",
+    mode: "text/x-objectivec",
+    files: ["clike/clike"],
+    label: "Objective-C"
+  });
+  def("r", {
+    id: "r",
+    mode: "text/x-rsrc",
+    files: ["r/r"],
+    label: "R"
+  });
+  def("pl pm", {
+    id: "perl",
+    mode: "text/x-perl",
+    files: ["perl/perl"],
+    label: "Perl"
+  });
+  def("ps1 psm1", {
+    id: "powershell",
+    mode: "application/x-powershell",
+    files: ["powershell/powershell"],
+    label: "PowerShell"
+  });
+  def("dart", {
+    id: "dart",
+    mode: "application/dart",
+    files: ["dart/dart"],
+    label: "Dart"
+  });
+  def("groovy gradle", {
+    id: "groovy",
+    mode: "text/x-groovy",
+    files: ["groovy/groovy"],
+    label: "Groovy"
+  });
+  def("hs", {
+    id: "haskell",
+    mode: "text/x-haskell",
+    files: ["haskell/haskell"],
+    label: "Haskell"
+  });
+  def("vb", {
+    id: "vbnet",
+    mode: "text/x-vb",
+    files: ["vb/vb"],
+    label: "VB.NET"
+  });
+  def("pas pp", {
+    id: "pascal",
+    mode: "text/x-pascal",
+    files: ["pascal/pascal"],
+    label: "Pascal"
+  });
+  def("tex", {
+    id: "latex",
+    mode: "text/x-stex",
+    files: ["stex/stex"],
+    label: "LaTeX"
+  });
+  def("jl", {
+    id: "julia",
+    mode: "text/x-julia",
+    files: ["julia/julia"],
+    label: "Julia"
+  });
+  def("cmake", {
+    id: "cmake",
+    mode: "text/x-cmake",
+    files: ["cmake/cmake"],
+    label: "CMake"
+  });
+  def("diff patch", {
+    id: "diff",
+    mode: "text/x-diff",
+    files: ["diff/diff"],
+    label: "Diff"
+  });
+  def("asm s", {
+    id: "asm",
+    mode: "text/x-gas",
+    files: ["gas/gas"],
+    label: "Assembly"
+  });
+  def("coffee", {
+    id: "coffeescript",
+    mode: "text/x-coffeescript",
+    files: ["coffeescript/coffeescript"],
+    label: "CoffeeScript"
+  });
+  def("fs fsx", {
+    id: "fsharp",
+    mode: "text/x-fsharp",
+    files: ["mllike/mllike"],
+    label: "F#"
+  });
+  def("ml mli", {
+    id: "ocaml",
+    mode: "text/x-ocaml",
+    files: ["mllike/mllike"],
+    label: "OCaml"
+  });
+  def("erl hrl", {
+    id: "erlang",
+    mode: "text/x-erlang",
+    files: ["erlang/erlang"],
+    label: "Erlang"
+  });
+  def("v sv", {
+    id: "verilog",
+    mode: "text/x-verilog",
+    files: ["verilog/verilog"],
+    label: "Verilog"
+  });
+  def("hc", {
+    id: "holyc",
+    mode: "text/x-csrc",
+    files: ["clike/clike"],
+    label: "HolyC"
+  });
   def("txt log text", {
     id: "text",
     mode: null,
@@ -225,10 +363,18 @@
     var i = b.lastIndexOf(".");
     return i > 0 ? b.slice(i + 1) : "";
   }
+  var LANG_NGINX = {
+    id: "nginx",
+    mode: "text/x-nginx-conf",
+    files: ["nginx/nginx"],
+    label: "Nginx"
+  };
   function langOf(path) {
     var b = path.split("/").pop().toLowerCase();
     if (b === "dockerfile" || b.indexOf("dockerfile.") === 0) return LANG.dockerfile;
     if (b === "makefile" || b === ".gitignore" || b === ".env" || b.indexOf(".env.") === 0) return LANG.ini || PLAIN;
+    if (b === "cmakelists.txt") return LANG.cmake;
+    if (b === "nginx.conf") return LANG_NGINX;
     return LANG[extOf(b)] || PLAIN;
   }
   function isImage(path) {
@@ -250,7 +396,14 @@
     php: [ [ "php", "<?php\n$0" ], [ "function", "function $0() {\n    \n}" ], [ "if", "if ($0) {\n    \n}" ], [ "foreach", "foreach ($0 as $item) {\n    \n}" ], [ "echo", "echo $0;" ] ],
     sql: [ [ "select", "SELECT $0\nFROM \nWHERE ;" ], [ "insert", "INSERT INTO $0 ()\nVALUES ();" ], [ "update", "UPDATE $0\nSET \nWHERE ;" ], [ "create", "CREATE TABLE $0 (\n    id INTEGER PRIMARY KEY\n);" ] ],
     yaml: [ [ "compose", "services:\n  $0:\n    image: \n    restart: unless-stopped\n    ports:\n      - '8080:8080'" ], [ "job", "name: $0\non:\n  push:\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4" ] ],
-    docker: [ [ "from", "FROM $0" ], [ "run", "RUN $0" ], [ "copy", "COPY $0 ." ], [ "workdir", "WORKDIR /$0" ], [ "cmd", 'CMD ["$0"]' ], [ "expose", "EXPOSE $0" ] ]
+    docker: [ [ "from", "FROM $0" ], [ "run", "RUN $0" ], [ "copy", "COPY $0 ." ], [ "workdir", "WORKDIR /$0" ], [ "cmd", 'CMD ["$0"]' ], [ "expose", "EXPOSE $0" ] ],
+    swift: [ [ "func", "func $0() {\n    \n}" ], [ "class", "class $0 {\n    \n}" ], [ "struct", "struct $0 {\n    \n}" ], [ "if", "if $0 {\n    \n}" ], [ "for", "for item in $0 {\n    \n}" ], [ "guard", "guard $0 else {\n    return\n}" ], [ "print", "print($0)" ] ],
+    kotlin: [ [ "fun", "fun $0() {\n    \n}" ], [ "class", "class $0 {\n    \n}" ], [ "if", "if ($0) {\n    \n}" ], [ "for", "for (item in $0) {\n    \n}" ], [ "main", "fun main() {\n    $0\n}" ], [ "print", "println($0)" ] ],
+    r: [ [ "function", "$0 <- function() {\n    \n}" ], [ "if", "if ($0) {\n    \n}" ], [ "for", "for (i in $0) {\n    \n}" ], [ "print", "print($0)" ] ],
+    powershell: [ [ "function", "function $0 {\n    param()\n    \n}" ], [ "if", "if ($0) {\n    \n}" ], [ "foreach", "foreach ($item in $0) {\n    \n}" ], [ "try", "try {\n    $0\n} catch {\n    Write-Error \$_\n}" ] ],
+    perl: [ [ "sub", "sub $0 {\n    \n}" ], [ "if", "if ($0) {\n    \n}" ], [ "for", "foreach my \$item ($0) {\n    \n}" ], [ "print", 'print "$0\\n";' ] ],
+    dart: [ [ "main", "void main() {\n    $0\n}" ], [ "class", "class $0 {\n    \n}" ], [ "if", "if ($0) {\n    \n}" ], [ "for", "for (var item in $0) {\n    \n}" ], [ "print", "print($0);" ] ],
+    holyc: [ [ "func", "U0 $0()\n{\n\n}" ], [ "if", "if ($0)\n{\n\n}" ], [ "for", "for (I64 i = 0; i < $0; i++)\n{\n\n}" ], [ "while", "while ($0)\n{\n\n}" ], [ "class", "class $0\n{\n\n};" ], [ "print", 'Print("$0\\n");' ] ]
   };
   var KW = {
     python: "and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return True try while with yield self print len range str int float bool list dict set tuple open enumerate zip sorted sum min max abs round input isinstance type super format join split strip append extend items keys values get pop replace startswith endswith",
@@ -273,7 +426,30 @@
     markdown: "",
     ini: "",
     xml: "",
-    text: ""
+    text: "",
+    swift: "func var let class struct enum protocol extension if else guard switch case default for while repeat return break continue import as is try catch throw throws async await self super nil true false in where init deinit private public internal fileprivate static override mutating print",
+    kotlin: "fun val var class object interface if else when for while do return break continue import package as is in try catch finally throw null true false this super private public internal protected override open lateinit companion data class println",
+    scala: "def val var class object trait if else match case for while do return yield import package extends with try catch finally throw new null true false this super private protected override case class println",
+    objectivec: "interface implementation property synthesize import include define if else for while do switch case default return break continue self super nil YES NO id BOOL int float double void NSString NSArray NSDictionary NSLog",
+    r: "function if else for while repeat break next return TRUE FALSE NULL NA library require print cat paste c list data.frame vector length names sapply lapply mapply apply",
+    perl: "my our local sub if elsif else unless while until for foreach do return last next redo use require package my qw print say defined undef ref bless shift push pop splice keys values",
+    powershell: "function param if elseif else switch foreach while do until return break continue try catch finally throw begin process end Write-Output Write-Host Get-ChildItem Get-Content Set-Content New-Object true false null",
+    dart: "void var final const class abstract extends implements with if else for while do switch case default return break continue import package as is in try catch finally throw async await Future Stream null true false print",
+    groovy: "def class interface if else for while do switch case default return break continue import package try catch finally throw new null true false println class",
+    haskell: "module import data type newtype class instance where let in if then else case of do return True False Nothing Just Left Right map filter foldr foldl",
+    vbnet: "Sub Function If Then Else ElseIf End For Next While Do Loop Return Dim As New Class Module Public Private Protected Friend Shared Nothing True False Imports Namespace",
+    pascal: "program uses begin end if then else for while do repeat until case of function procedure var const type record array of string integer boolean true false",
+    latex: "documentclass usepackage begin end section subsection subsubsection item textbf textit label ref cite includegraphics newcommand",
+    julia: "function end if else elseif for while return break continue struct mutable abstract type using import module true false nothing println print",
+    cmake: "cmake_minimum_required project add_executable add_library target_link_libraries include_directories set if else elseif endif foreach endforeach function endfunction option find_package",
+    diff: "",
+    asm: "mov add sub jmp je jne jz jnz call ret push pop cmp lea global section text data bss db dw dd",
+    coffeescript: "if else unless for while class extends return true false null this new import export switch when then",
+    fsharp: "let mutable rec fun if then else elif match with type module namespace open true false null try with finally raise printfn",
+    ocaml: "let rec fun if then else match with type module open true false try with raise print_string",
+    erlang: "module export import if case of end fun receive after true false spawn self send",
+    verilog: "module endmodule input output wire reg assign always if else case endcase begin end posedge negedge parameter integer initial",
+    holyc: "U0 U8 U16 U32 U64 I8 I16 I32 I64 F64 Bool class if else while do for switch case default break continue return extern import include public private start asm goto Print PrintF GetTime True False"
   };
   var DEFAULTS = {
     theme: "graphite",
@@ -2055,6 +2231,7 @@
     $("btnCheck").onclick = function() {
       renderChecks($("checkPanel"), true);
     };
+    $("btnLangs").onclick = renderLanguageList;
     $("btnReset").onclick = function() {
       S = Object.assign({}, DEFAULTS);
       applySettings();
@@ -2383,6 +2560,40 @@
       conOut((c.ok ? "✓ " : "✗ ") + c.what + (c.ok ? "" : " - " + c.fix), c.ok ? "" : "err");
       if (!c.ok && c.flag) conOut("    " + c.flag, "d");
     });
+  }
+  function supportedLanguages() {
+    var byId = {};
+    Object.keys(LANG).forEach(function(ext) {
+      var l = LANG[ext];
+      if (l.id === "text") return;
+      if (!byId[l.id]) byId[l.id] = { label: l.label, exts: [] };
+      byId[l.id].exts.push("." + ext);
+    });
+    byId[LANG_NGINX.id] = { label: LANG_NGINX.label, exts: ["nginx.conf"] };
+    if (byId.cmake) byId.cmake.exts.push("CMakeLists.txt");
+    return Object.keys(byId).map(function(id) {
+      return byId[id];
+    }).sort(function(a, b) {
+      return a.label.localeCompare(b.label);
+    });
+  }
+  function renderLanguageList() {
+    var box = $("langPanel");
+    box.innerHTML = "";
+    supportedLanguages().forEach(function(l) {
+      var chip = document.createElement("div");
+      chip.className = "lang-chip";
+      var name = document.createElement("span");
+      name.className = "name";
+      name.textContent = l.label;
+      var exts = document.createElement("span");
+      exts.className = "exts";
+      exts.textContent = l.exts.join(" ");
+      chip.appendChild(name);
+      chip.appendChild(exts);
+      box.appendChild(chip);
+    });
+    box.classList.remove("hidden");
   }
   async function main() {
     loadSettings();
