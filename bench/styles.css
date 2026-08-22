@@ -563,3 +563,11 @@ li.CodeMirror-hint-active .hint-kind { color: var(--accent-ink); opacity: .7; }
   cursor: pointer;
 }
 .error-dot:hover { transform: scale(1.4); }
+.lang-panel { margin-top: .7em; display: flex; flex-wrap: wrap; gap: .4em; max-height: 220px; overflow-y: auto; }
+.lang-chip {
+  display: flex; align-items: baseline; gap: .35em;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px;
+  padding: .3em .55em; font-size: .85em;
+}
+.lang-chip .name { color: var(--text); }
+.lang-chip .exts { color: var(--faint); font-size: .88em; }
