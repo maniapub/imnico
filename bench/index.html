@@ -19,7 +19,7 @@
   html, body { background: #101318; color: #ccd4e0; margin: 0; height: 100%; }
   .hidden { display: none !important; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=17">
+<link rel="stylesheet" href="./styles.css?v=18">
 </head>
 <body>
 
@@ -219,6 +219,12 @@
       </div>
 
       <div class="group">
+        <div class="group-label">Languages</div>
+        <button class="btn" id="btnLangs">Show supported languages</button>
+        <div id="langPanel" class="lang-panel hidden"></div>
+      </div>
+
+      <div class="group">
         <div class="group-label">Browser support</div>
         <button class="btn" id="btnCheck">Check what this browser allows</button>
         <div id="checkPanel" class="checks"></div>
@@ -232,6 +238,6 @@
   </div>
 </div>
 
-<script src="./app.js?v=18"></script>
+<script src="./app.js?v=19"></script>
 </body>
 </html>
