@@ -10,7 +10,7 @@
   html, body { background: #101318; color: #ccd4e0; margin: 0; height: 100%; }
   .hidden { display: none !important; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=14">
+<link rel="stylesheet" href="./styles.css?v=15">
 </head>
 <body>
 
@@ -22,6 +22,7 @@
     <div id="crumb" class="crumb">No folder open</div>
     <div class="spacer"></div>
     <button id="btnFind" class="btn" title="Find file (Ctrl+P)">Find file</button>
+    <button id="btnSplit" class="btn" title="Toggle split editor">Split</button>
     <button id="btnSettings" class="btn" title="Settings (Ctrl+,)">Settings</button>
   </header>
 
@@ -51,22 +52,34 @@
 
       <div id="tabs" class="tabs"></div>
 
-      <div class="editor-host">
-        <div id="cmHost" class="cm-host hidden"></div>
-        <div id="viewHost" class="view-host hidden"></div>
-        <div id="welcome" class="welcome">
-          <div class="welcome-inner">
-            <h1>bench</h1>
-            <p class="lede">A small editor that opens a folder on <em>this</em> computer. Nothing is uploaded - every read and write happens locally in your browser.</p>
-            <dl class="keys">
-              <dt>Ctrl</dt><dd>+ P - find a file</dd>
-              <dt>Ctrl</dt><dd>+ S - save</dd>
-              <dt>Ctrl</dt><dd>+ B - toggle files</dd>
-              <dt>Ctrl</dt><dd>+ ` - toggle console</dd>
-              <dt>Tab</dt><dd>- complete for the current language</dd>
-            </dl>
-            <div id="checks" class="checks hidden"></div>
+      <div class="editor-host" id="editorHost">
+        <div class="editor-pane" id="pane1">
+          <div id="cmHost" class="cm-host hidden"></div>
+          <div id="viewHost" class="view-host hidden"></div>
+          <div id="welcome" class="welcome">
+            <div class="welcome-inner">
+              <h1>bench</h1>
+              <p class="lede">A small editor that opens a folder on <em>this</em> computer. Nothing is uploaded - every read and write happens locally in your browser.</p>
+              <dl class="keys">
+                <dt>Ctrl</dt><dd>+ P - find a file</dd>
+                <dt>Ctrl</dt><dd>+ S - save</dd>
+                <dt>Ctrl</dt><dd>+ B - toggle files</dd>
+                <dt>Ctrl</dt><dd>+ ` - toggle console</dd>
+                <dt>Tab</dt><dd>- complete for the current language</dd>
+              </dl>
+              <div id="checks" class="checks hidden"></div>
+            </div>
           </div>
+        </div>
+        <div id="splitGrip" class="grip grip-v hidden" role="separator" aria-orientation="vertical" tabindex="0" title="Drag to resize"><span class="notch"></span></div>
+        <div class="editor-pane split-pane hidden" id="pane2">
+          <div class="split-head">
+            <span id="split2Name" class="split2-name">No file</span>
+            <button class="icon" id="btnSplitSave" title="Save (this pane)">save</button>
+            <button class="icon" id="btnSplitClose" title="Close split">close</button>
+          </div>
+          <div id="cmHost2" class="cm-host2"></div>
+          <div id="split2Empty" class="split2-empty">Right-click a file in the tree and choose "Open to the side".</div>
         </div>
       </div>
 
@@ -186,6 +199,17 @@
       </div>
 
       <div class="group">
+        <div class="group-label">Custom snippets</div>
+        <div id="snipList" class="snip-list"></div>
+        <div class="snip-add">
+          <select id="snipLang" class="snip-lang" title="Language"></select>
+          <input id="snipTrigger" class="snip-trigger" placeholder="trigger" spellcheck="false" autocomplete="off">
+          <textarea id="snipBody" class="snip-body" placeholder="expansion - use $0 for where the cursor lands, 4 spaces per indent level" rows="2" spellcheck="false"></textarea>
+          <button class="btn btn-accent" id="btnSnipAdd">Add snippet</button>
+        </div>
+      </div>
+
+      <div class="group">
         <div class="group-label">Browser support</div>
         <button class="btn" id="btnCheck">Check what this browser allows</button>
         <div id="checkPanel" class="checks"></div>
@@ -199,6 +223,6 @@
   </div>
 </div>
 
-<script src="./app.js?v=12"></script>
+<script src="./app.js?v=15"></script>
 </body>
 </html>
